@@ -8,7 +8,7 @@ import { limit, rpc } from '@/lib/guest/rpc';
 import { GUEST_COOKIE, verifyGuestCookie } from '@/lib/security/cookie';
 import { clientIp, hashIp } from '@/lib/security/ip';
 import { slugParam } from '@/lib/schemas/guest';
-import { LANG_COOKIE, isLang, makeT } from '@/lib/i18n';
+import { t } from '@/lib/i18n';
 import type { MenuData } from '@/lib/guest/types';
 import { GuestApp } from '@/components/guest/GuestApp';
 import { StatePage } from '@/components/guest/StatePage';
@@ -47,9 +47,6 @@ export default async function RestaurantPage({ params, searchParams }: Props) {
   if (!slugParam.safeParse(slug).success) notFound();
 
   const jar = await cookies();
-  const langCookie = jar.get(LANG_COOKIE)?.value;
-  const lang = isLang(langCookie) ? langCookie : 'en';
-  const t = makeT(lang);
   const rawK = Array.isArray(k) ? k[0] : k;
   const token = tokenFrom(k);
 
@@ -77,7 +74,6 @@ export default async function RestaurantPage({ params, searchParams }: Props) {
       slug={slug}
       // A malformed ?k= is treated as "invalid QR" (shown), not silently ignored.
       token={token ?? (rawK ? 'invalid' : null)}
-      initialLang={lang}
       hasCookie={session?.slug === slug}
       imageBase={imageBase}
     />

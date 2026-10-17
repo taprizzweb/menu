@@ -16,8 +16,9 @@ export function buildCsp({ nonce, dev, supabaseUrl, sentryOrigin, secure = true 
   const supabaseWss = `wss://${supabase.host}`;
   const connect = ["'self'", supabaseHttps, supabaseWss];
   if (sentryOrigin) connect.push(sentryOrigin);
-  // Local Supabase runs over http/ws; only ever allowed in development.
-  if (dev) connect.push(`http://${supabase.host}`, `ws://${supabase.host}`, 'ws://localhost:*', 'ws://127.0.0.1:*');
+  // Local Supabase runs over http/ws; only allowed in development or when the site itself is plain-http local testing.
+  if (dev || !secure) connect.push(`http://${supabase.host}`, `ws://${supabase.host}`);
+  if (dev) connect.push('ws://localhost:*', 'ws://127.0.0.1:*');
 
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],

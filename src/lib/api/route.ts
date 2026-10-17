@@ -1,4 +1,5 @@
 import 'server-only';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { ZodError, type ZodType } from 'zod';
 import { serverEnv } from '@/env';
@@ -6,11 +7,18 @@ import { ApiError, type ErrorKey } from '@/lib/errors';
 import { log } from '@/lib/log';
 import { MAX_BODY_BYTES, isAllowedOrigin, isJson } from '@/lib/security/origin';
 import { clientIp, hashIp } from '@/lib/security/ip';
+import { userClient } from '@/lib/supabase/server';
 
 export interface Ctx {
   requestId: string;
   /** salted hash of the caller's IP; the raw address is never kept */
   ipHash: string;
+}
+
+export interface StaffCtx extends Ctx {
+  userId: string;
+  /** database client that acts as the signed-in staff member (RLS + role checks apply) */
+  db: SupabaseClient;
 }
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
@@ -35,14 +43,21 @@ async function readJson(req: Request): Promise<unknown> {
   }
 }
 
+interface Options<B> {
+  method: 'GET' | 'POST';
+  schema?: ZodType<B>;
+  checkOrigin?: boolean;
+}
+
 /**
- * Wraps a guest route: request id, CSRF/origin check, JSON-only, body size cap, zod validation,
- * and uniform error mapping (no stack traces or database text ever reach the user).
+ * Shared guard for every API route: request id, CSRF/origin check, JSON-only, body size cap, zod validation and
+ * uniform error mapping (no stack traces or database text ever reach the user). `authenticate` adds the signed-in user.
  */
-export async function guestRoute<B = undefined>(
+async function guarded<B, C extends Ctx>(
   req: Request,
-  opts: { method: 'GET' | 'POST'; schema?: ZodType<B>; checkOrigin?: boolean },
-  run: (ctx: Ctx, body: B) => Promise<Response>,
+  opts: Options<B>,
+  authenticate: ((ctx: Ctx) => Promise<C>) | null,
+  run: (ctx: C, body: B) => Promise<Response>,
 ): Promise<Response> {
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   try {
@@ -57,14 +72,15 @@ export async function guestRoute<B = undefined>(
       const raw = await readJson(req);
       body = opts.schema ? opts.schema.parse(raw) : (raw as B);
     }
-    const ctx: Ctx = { requestId, ipHash: hashIp(clientIp(req.headers), env.IP_HASH_SALT) };
+    const base: Ctx = { requestId, ipHash: hashIp(clientIp(req.headers), env.IP_HASH_SALT) };
+    const ctx = authenticate ? await authenticate(base) : (base as C);
     const res = await run(ctx, body);
     res.headers.set('x-request-id', requestId);
     return res;
   } catch (e) {
     if (e instanceof ApiError) return jsonError(e.status, e.key, requestId);
     if (e instanceof ZodError) return jsonError(400, 'invalid_input', requestId);
-    log('error', 'unhandled guest route error', {
+    log('error', 'unhandled route error', {
       requestId,
       path: new URL(req.url).pathname,
       error: e instanceof Error ? e.message : String(e),
@@ -72,4 +88,24 @@ export async function guestRoute<B = undefined>(
     });
     return jsonError(500, 'server_error', requestId);
   }
+}
+
+/** Public (guest) route. */
+export function guestRoute<B = undefined>(req: Request, opts: Options<B>, run: (ctx: Ctx, body: B) => Promise<Response>): Promise<Response> {
+  return guarded<B, Ctx>(req, opts, null, run);
+}
+
+/** Staff route: the caller must be signed in (verified with getUser()); the handler gets a database client acting as them. */
+export function staffRoute<B = undefined>(req: Request, opts: Options<B>, run: (ctx: StaffCtx, body: B) => Promise<Response>): Promise<Response> {
+  return guarded<B, StaffCtx>(
+    req,
+    opts,
+    async (ctx) => {
+      const db = await userClient();
+      const { data, error } = await db.auth.getUser();
+      if (error || !data.user) throw new ApiError(401, 'unauthorized');
+      return { ...ctx, userId: data.user.id, db };
+    },
+    run,
+  );
 }

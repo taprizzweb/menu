@@ -19,3 +19,14 @@ export async function limit(key: string, max: number, windowSeconds: number): Pr
   const ok = await rpc<boolean>('guest_rate_limit', { p_key: key, p_limit: max, p_window_seconds: windowSeconds });
   if (!ok) throw new ApiError(429, 'rate_limited');
 }
+
+/** Refuses (429) when `key` already has `max` recorded FAILURES in the window. Does not count this request itself. */
+export async function guard(key: string, max: number, windowSeconds: number): Promise<void> {
+  const ok = await rpc<boolean>('guest_rate_check', { p_key: key, p_limit: max, p_window_seconds: windowSeconds });
+  if (!ok) throw new ApiError(429, 'rate_limited');
+}
+
+/** Records one failure against `key` (call after a suspicious failure such as a wrong QR token or password). */
+export async function penalize(key: string, windowSeconds: number): Promise<void> {
+  await rpc('guest_rate_hit', { p_key: key, p_window_seconds: windowSeconds });
+}

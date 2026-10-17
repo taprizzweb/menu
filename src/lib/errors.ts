@@ -21,7 +21,7 @@ export const SQL_ERRORS = {
   GM016: { status: 409, key: 'no_orders' },
 } as const;
 
-export type ErrorKey = (typeof SQL_ERRORS)[keyof typeof SQL_ERRORS]['key'] | 'origin_not_allowed' | 'unsupported_media_type' | 'payload_too_large' | 'unauthorized' | 'method_not_allowed' | 'server_error';
+export type ErrorKey = (typeof SQL_ERRORS)[keyof typeof SQL_ERRORS]['key'] | 'origin_not_allowed' | 'unsupported_media_type' | 'payload_too_large' | 'unauthorized' | 'invalid_credentials' | 'method_not_allowed' | 'server_error';
 
 export class ApiError extends Error {
   constructor(

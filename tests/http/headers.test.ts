@@ -50,4 +50,29 @@ describe('security headers on a real response', () => {
     expect(res.headers.get('strict-transport-security')).toBeTruthy();
     expect(res.headers.get('content-security-policy')).toContain("object-src 'none'");
   });
+
+  it('error pages also carry the headers (kept)', async () => {
+    const res = await fetch(BASE + '/definitely-not-a-page-xyz-2');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+});
+
+describe('signed-out visitors cannot reach protected areas', () => {
+  // The test server points at a Supabase address that does not exist, which also proves the guard FAILS CLOSED:
+  // if the login service cannot be reached, nobody is let in.
+  for (const area of ['/staff', '/staff/anything', '/dash', '/admin']) {
+    it(`${area} redirects to the sign-in page`, async () => {
+      const res = await fetch(BASE + area, { redirect: 'manual' });
+      expect(res.status).toBe(307);
+      const loc = res.headers.get('location') ?? '';
+      expect(new URL(loc, BASE).pathname).toBe('/login');
+      expect(res.headers.get('content-security-policy')).toContain("object-src 'none'");
+    });
+  }
+  it('staff API answers 401 without a session', async () => {
+    expect((await fetch(BASE + '/api/staff/board')).status).toBe(401);
+  });
+  it('the sign-in page itself is public', async () => {
+    expect((await fetch(BASE + '/login')).status).toBe(200);
+  });
 });

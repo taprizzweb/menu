@@ -39,14 +39,14 @@ export async function seedDemo(pool: Pool, opts: SeedOptions): Promise<SeedResul
     let catOrder = 0;
     for (const c of r.categories) {
       const { rows: [cat] } = await pool.query<{ id: string }>(
-        `insert into public.categories (restaurant_id, name_en, name_hi, sort_order) values ($1,$2,$3,$4) returning id`, [rid, c.en, c.hi, catOrder++]);
+        `insert into public.categories (restaurant_id, name_en, sort_order) values ($1,$2,$3) returning id`, [rid, c.en, catOrder++]);
       let itemOrder = 0;
       for (const i of c.items) {
         await pool.query(
-          `insert into public.items (restaurant_id, category_id, name_en, name_hi, description_en, description_hi, price_paise, diet, spice,
+          `insert into public.items (restaurant_id, category_id, name_en, description_en, price_paise, diet, spice,
                                      is_available, is_bestseller, is_chef_pick, sort_order)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-          [rid, cat!.id, i.en, i.hi, i.descEn, i.descHi, Math.round(i.rupees * 100), i.diet, i.spice ?? 0, !i.soldOut, !!i.best, !!i.chef, itemOrder++],
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [rid, cat!.id, i.en, i.descEn, Math.round(i.rupees * 100), i.diet, i.spice ?? 0, !i.soldOut, !!i.best, !!i.chef, itemOrder++],
         );
       }
     }

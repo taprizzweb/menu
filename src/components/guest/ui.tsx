@@ -87,7 +87,7 @@ export function Sheet({ open, onClose, title, closeLabel, children }: { open: bo
         if (e.target === ref.current) onClose();
       }}
     >
-      <div className="sheet-panel mx-auto flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white shadow-xl">
+      <div className="sheet-panel mx-auto flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white shadow-xl md:rounded-3xl">
         <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-5 py-3">
           <h2 id={titleId} className="text-lg font-bold">
             {title}

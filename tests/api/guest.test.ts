@@ -154,18 +154,38 @@ describe('POST /api/guest/order', () => {
     expect((await json(res)).error.key).toBe('restaurant_suspended');
   });
 
-  it('throttles repeated failures from one IP (token guessing) with 429', async () => {
+  it('throttles repeated WRONG-TOKEN attempts from one IP (token guessing): 20 allowed, then 429', async () => {
     const ip = uniqueIp();
     const t = await freshTable();
     let last = 0;
-    for (let i = 0; i < 45; i++) {
+    for (let i = 0; i < 25; i++) {
       const res = await orderPOST(req('/api/guest/order', orderBody({ token: 'a'.repeat(64) }), { ip }));
       last = res.status;
-      if (i < 40) expect(res.status, `attempt ${i}`).toBe(403);
+      if (i < 20) expect(res.status, `attempt ${i}`).toBe(403);
     }
     expect(last).toBe(429);
-    // another IP is unaffected
+    // the same address is also blocked from the waiter endpoint (one shared guessing budget)...
+    expect((await requestPOST(req('/api/guest/request', { slug: w.A.slug, token: t.token, type: 'waiter', reason: 'water' }, { ip }))).status).toBe(429);
+    // ...but another address is unaffected
     expect((await orderPOST(req('/api/guest/order', orderBody(t), { ip: uniqueIp() }))).status).toBe(200);
+  });
+
+  it('does NOT throttle honest traffic: 45 successful requests from one shared cafe address all go through', async () => {
+    const ip = uniqueIp();
+    for (let i = 0; i < 45; i++) {
+      const t = await freshTable();
+      const res = await requestPOST(req('/api/guest/request', { slug: w.A.slug, token: t.token, type: 'waiter', reason: 'water' }, { ip }));
+      expect(res.status, `request ${i}`).toBe(200);
+    }
+  });
+
+  it('other kinds of business errors (e.g. a sold-out dish) do not count towards the guessing limit', async () => {
+    const ip = uniqueIp();
+    const t = await freshTable();
+    for (let i = 0; i < 30; i++) {
+      const res = await orderPOST(req('/api/guest/order', orderBody(t, { items: [{ item_id: w.A.soldOut, qty: 1 }] }), { ip }));
+      expect(res.status).toBe(409);
+    }
   });
 
   it('turns unexpected database failures into a generic 500 with a request id (no internals leaked)', async () => {

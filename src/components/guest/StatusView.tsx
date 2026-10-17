@@ -1,7 +1,7 @@
 'use client';
 import { formatPaise } from '@/lib/money';
 import type { OrderStatus, StatusData, StatusOrder } from '@/lib/guest/types';
-import type { Lang, Translator } from '@/lib/i18n';
+import type { Translator } from '@/lib/i18n';
 import { btnPrimary, btnSecondary, IconCheck } from './ui';
 
 const STAGES: Exclude<OrderStatus, 'cancelled'>[] = ['placed', 'preparing', 'ready', 'served'];
@@ -26,7 +26,7 @@ function Stepper({ status, t }: { status: Exclude<OrderStatus, 'cancelled'>; t: 
   );
 }
 
-function OrderCard({ o, lang, t }: { o: StatusOrder; lang: Lang; t: Translator }) {
+function OrderCard({ o, t }: { o: StatusOrder; t: Translator }) {
   const cancelled = o.status === 'cancelled';
   return (
     <li className={`rounded-2xl border bg-white p-4 ${cancelled ? 'border-red-200' : 'border-stone-200'}`}>
@@ -37,7 +37,7 @@ function OrderCard({ o, lang, t }: { o: StatusOrder; lang: Lang; t: Translator }
       <ul className="mt-2 space-y-1 text-sm">
         {o.items.map((it, idx) => (
           <li key={idx}>
-            <span className="font-semibold">{it.qty} ×</span> {lang === 'hi' && it.name_hi ? it.name_hi : it.name_en}
+            <span className="font-semibold">{it.qty} ×</span> {it.name_en}
             {it.note && <span className="block text-stone-600">“{it.note}”</span>}
           </li>
         ))}
@@ -59,7 +59,7 @@ function OrderCard({ o, lang, t }: { o: StatusOrder; lang: Lang; t: Translator }
   );
 }
 
-export function StatusView({ data, lang, t, onAddMore }: { data: StatusData | null; lang: Lang; t: Translator; onAddMore: () => void }) {
+export function StatusView({ data, t, onAddMore }: { data: StatusData | null; t: Translator; onAddMore: () => void }) {
   const orders = data?.orders ?? [];
   return (
     <div className="mx-auto max-w-2xl px-4 pb-4 pt-4">
@@ -74,7 +74,7 @@ export function StatusView({ data, lang, t, onAddMore }: { data: StatusData | nu
           <p className="py-10 text-center text-stone-600">{t('status.noOrders')}</p>
         ) : (
           <>
-            <ul className="mt-3 space-y-3">{[...orders].reverse().map((o) => <OrderCard key={o.order_no} o={o} lang={lang} t={t} />)}</ul>
+            <ul className="mt-3 space-y-3">{[...orders].reverse().map((o) => <OrderCard key={o.order_no} o={o} t={t} />)}</ul>
             <div className="mt-4 flex items-baseline justify-between rounded-2xl bg-stone-900 px-4 py-3 text-white">
               <span className="font-semibold">{t('status.tableTotal')}</span>
               <span className="text-xl font-extrabold">{formatPaise(data.total_paise ?? 0)}</span>

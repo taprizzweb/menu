@@ -5,9 +5,7 @@ export type Diet = 'veg' | 'nonveg' | 'egg' | 'jain';
 export interface MenuItem {
   id: string;
   name_en: string;
-  name_hi: string | null;
   description_en: string | null;
-  description_hi: string | null;
   price_paise: number;
   diet: Diet;
   spice: number;
@@ -20,7 +18,6 @@ export interface MenuItem {
 export interface MenuCategory {
   id: string;
   name_en: string;
-  name_hi: string | null;
   items: MenuItem[];
 }
 
@@ -38,7 +35,6 @@ export type WaiterReason = 'water' | 'cutlery' | 'cleaning' | 'help' | 'other';
 
 export interface StatusOrderItem {
   name_en: string;
-  name_hi: string | null;
   qty: number;
   unit_price_paise: number;
   note: string | null;

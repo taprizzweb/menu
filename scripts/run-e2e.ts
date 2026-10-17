@@ -44,7 +44,7 @@ const wait = async (ok: () => Promise<boolean>, what: string, seconds = 180) => 
     await wait(async () => (await fetch(`http://127.0.0.1:${PORT}/api/health`)).ok, 'app health');
     code = await new Promise<number>((resolve) => {
       const p = spawn('node_modules/.bin/playwright', ['test', ...process.argv.slice(2)], {
-        env: { ...process.env, E2E_BASE_URL: `http://127.0.0.1:${PORT}`, DEV_STACK_INFO: INFO },
+        env: { ...process.env, E2E_BASE_URL: `http://localhost:${PORT}`, DEV_STACK_INFO: INFO },
         stdio: 'inherit',
       });
       p.on('exit', (c) => resolve(c ?? 1));

@@ -163,21 +163,6 @@ test.describe('menu behaviour', () => {
     await expect(page.getByRole('heading', { name: 'Beverages', level: 2 })).toBeInViewport();
     await expect(page.getByRole('navigation', { name: 'Menu categories' }).getByRole('button', { name: 'Beverages' })).toHaveAttribute('aria-current', 'true');
   });
-
-  test('Hindi / English toggle is remembered and the server renders it', async ({ page }) => {
-    const t = await newTable();
-    await open(page, t);
-    await page.getByRole('button', { name: 'Switch language to Hindi' }).click();
-    await expect(page.getByRole('heading', { name: 'पनीर टिक्का', level: 3 })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'पनीर टिक्का जोड़ें' })).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
-    await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-8-hindi.png` });
-    await page.reload();
-    await expect(page.getByRole('heading', { name: 'पनीर टिक्का', level: 3 })).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
-    await page.getByRole('button', { name: 'भाषा अंग्रेज़ी में बदलें' }).click();
-    await expect(page.getByRole('heading', { name: 'Paneer Tikka', level: 3 })).toBeVisible();
-  });
 });
 
 test.describe('friendly states', () => {
@@ -216,7 +201,7 @@ test.describe('friendly states', () => {
     await expect(page.getByText('We could not find this restaurant')).toBeVisible();
   });
 
-  test('privacy notice is readable in both languages', async ({ page }) => {
+  test('privacy notice is readable', async ({ page }) => {
     await page.goto('/privacy');
     await expect(page.getByRole('heading', { name: 'Privacy notice' })).toBeVisible();
     await expect(page.getByText('We do not ask for your name')).toBeVisible();
@@ -282,7 +267,7 @@ test.describe('security on the real server', () => {
     const evil = await base.post('/api/guest/order', { data: body, headers: { origin: 'https://evil.example' } });
     expect(evil.status()).toBe(403);
     expect(((await evil.json()) as { error: { key: string } }).error.key).toBe('origin_not_allowed');
-    const origin = new URL(page.url() === 'about:blank' ? (process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3100') : page.url()).origin;
+    const origin = new URL(page.url() === 'about:blank' ? (process.env.E2E_BASE_URL ?? 'http://localhost:3100') : page.url()).origin;
     const tamper = await base.post('/api/guest/order', { data: { ...body, total_paise: 1 }, headers: { origin } });
     expect(tamper.status()).toBe(400);
     const form = await base.post('/api/guest/order', { form: { a: '1' }, headers: { origin } });

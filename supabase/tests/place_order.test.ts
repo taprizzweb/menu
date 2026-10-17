@@ -203,6 +203,20 @@ describe('guest_place_order: anti-spam caps', () => {
     // a different key is independent
     expect((await db.as<{ r: boolean }>('service_role', null, `select public.guest_rate_limit($1, 5, 600) r`, [`ip:${randomUUID()}`]))[0]!.r).toBe(true);
   });
+  it('guest_rate_check never counts; guest_rate_hit adds one failure; the check flips only once the limit is reached', async () => {
+    const key = `tok:${randomUUID()}`;
+    const check = async () => (await db.as<{ r: boolean }>('service_role', null, `select public.guest_rate_check($1, 3, 600) r`, [key]))[0]!.r;
+    const hit = () => db.as('service_role', null, `select public.guest_rate_hit($1, 600)`, [key]);
+    for (let i = 0; i < 10; i++) expect(await check()).toBe(true); // checking alone changes nothing
+    await hit(); await hit();
+    expect(await check()).toBe(true);
+    await hit();
+    expect(await check()).toBe(false);
+    await db.admin(`update public.rate_limits set window_start = now() - interval '11 minutes' where key = $1`, [key]);
+    expect(await check()).toBe(true); // window expired
+    expect((await db.asErr('authenticated', w.A.owner, `select public.guest_rate_hit('x', 60)`))?.code).toBe('42501');
+    expect((await db.asErr('anon', null, `select public.guest_rate_check('x', 1, 60)`))?.code).toBe('42501');
+  });
   it('the window resets after it expires', async () => {
     const key = `ip:${randomUUID()}`;
     for (let i = 0; i < 3; i++) await db.as('service_role', null, `select public.guest_rate_limit($1, 2, 60)`, [key]);

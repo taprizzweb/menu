@@ -1,6 +1,9 @@
 import { defineConfig } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
+// Lets tests intercept the service worker's own network requests (used to prove the offline page works).
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
+
 // The sandbox ships a Chromium build; CI installs Playwright's own (PW_CHROMIUM unset => bundled browser).
 const preinstalled = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const executablePath = process.env.PW_CHROMIUM ?? (existsSync(preinstalled) ? preinstalled : undefined);
@@ -14,7 +17,7 @@ export default defineConfig({
   reporter: [['list']],
   outputDir: 'test-results',
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3100',
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3100',
     launchOptions: { executablePath, args: ['--no-sandbox'] },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

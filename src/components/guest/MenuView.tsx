@@ -2,21 +2,19 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { formatPaise } from '@/lib/money';
 import type { MenuCategory, MenuItem } from '@/lib/guest/types';
-import type { Lang, Translator } from '@/lib/i18n';
+import type { Translator } from '@/lib/i18n';
 import { DietMark, IconMinus, IconPlus, IconSearch, SpiceDots } from './ui';
 
 type Filter = 'veg' | 'jain' | 'bestseller';
 
-const pick = (lang: Lang, en: string | null, hi: string | null) => (lang === 'hi' && hi ? hi : (en ?? ''));
-
 const ItemCard = memo(function ItemCard({
-  item, lang, t, qty, canOrder, imageBase, onAdd, onSet,
+  item, t, qty, canOrder, imageBase, onAdd, onSet,
 }: {
-  item: MenuItem; lang: Lang; t: Translator; qty: number; canOrder: boolean; imageBase: string;
+  item: MenuItem; t: Translator; qty: number; canOrder: boolean; imageBase: string;
   onAdd: (id: string) => void; onSet: (id: string, qty: number) => void;
 }) {
-  const name = pick(lang, item.name_en, item.name_hi);
-  const desc = pick(lang, item.description_en, item.description_hi);
+  const name = item.name_en;
+  const desc = item.description_en;
   const soldOut = !item.is_available;
   return (
     <li className={`flex gap-3 rounded-2xl border p-3 ${soldOut ? 'border-stone-200 bg-stone-100' : 'border-stone-200 bg-white'}`}>
@@ -66,9 +64,9 @@ const ItemCard = memo(function ItemCard({
 });
 
 export function MenuView({
-  categories, lang, t, canOrder, imageBase, qtyOf, onAdd, onSet,
+  categories, t, canOrder, imageBase, qtyOf, onAdd, onSet,
 }: {
-  categories: MenuCategory[]; lang: Lang; t: Translator; canOrder: boolean; imageBase: string;
+  categories: MenuCategory[]; t: Translator; canOrder: boolean; imageBase: string;
   qtyOf: (id: string) => number; onAdd: (id: string) => void; onSet: (id: string, qty: number) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -86,7 +84,7 @@ export function MenuView({
           if (filters.has('jain') && i.diet !== 'jain') return false;
           if (filters.has('bestseller') && !i.is_bestseller) return false;
           if (!q) return true;
-          return [i.name_en, i.name_hi, i.description_en, i.description_hi].some((s) => s?.toLowerCase().includes(q));
+          return [i.name_en, i.description_en].some((s) => s?.toLowerCase().includes(q));
         }),
       }))
       .filter((c) => c.items.length > 0);
@@ -159,7 +157,7 @@ export function MenuView({
         <nav aria-label={t('menu.categories')} ref={barRef} className="no-scrollbar mx-auto flex max-w-2xl gap-2 overflow-x-auto">
           {shown.map((c) => (
             <button key={c.id} type="button" data-cat={c.id} onClick={() => jump(c.id)} aria-current={active === c.id ? 'true' : undefined} className={chip(active === c.id)}>
-              {pick(lang, c.name_en, c.name_hi)}
+              {c.name_en}
             </button>
           ))}
         </nav>
@@ -178,10 +176,10 @@ export function MenuView({
         ) : (
           shown.map((c) => (
             <section key={c.id} id={`cat-${c.id}`} aria-labelledby={`cat-h-${c.id}`} className="scroll-mt-16 pt-4">
-              <h2 id={`cat-h-${c.id}`} className="mb-2 text-lg font-bold">{pick(lang, c.name_en, c.name_hi)}</h2>
+              <h2 id={`cat-h-${c.id}`} className="mb-2 text-lg font-bold">{c.name_en}</h2>
               <ul className="space-y-3">
                 {c.items.map((i) => (
-                  <ItemCard key={i.id} item={i} lang={lang} t={t} qty={qtyOf(i.id)} canOrder={canOrder} imageBase={imageBase} onAdd={onAdd} onSet={onSet} />
+                  <ItemCard key={i.id} item={i} t={t} qty={qtyOf(i.id)} canOrder={canOrder} imageBase={imageBase} onAdd={onAdd} onSet={onSet} />
                 ))}
               </ul>
             </section>

@@ -24,6 +24,38 @@ export const fakeAdminClient = {
   },
 };
 
+/** The signed-in staff member for the next request (what the session cookie would prove). */
+export const authState = {
+  userId: null as string | null,
+  signOuts: [] as string[],
+};
+
+/**
+ * Stand-in for the cookie-based Supabase client: getUser() answers with `authState.userId`, rpc() runs the real SQL
+ * as that user (authenticated role), and signInWithPassword() accepts the demo password for any existing auth user.
+ */
+export const fakeUserClient = {
+  auth: {
+    getUser: async () => (authState.userId ? { data: { user: { id: authState.userId } }, error: null } : { data: { user: null }, error: { status: 401, message: 'no session' } }),
+    signInWithPassword: async ({ email, password }: { email: string; password: string }) => {
+      const r = await state.pool!.query<{ id: string }>(`select id from auth.users where email = $1`, [email]);
+      if (r.rowCount === 0 || password !== 'correct-horse-battery-staple') return { data: { session: null }, error: { status: 400, message: 'Invalid login credentials' } };
+      authState.userId = r.rows[0]!.id;
+      return { data: { session: {} }, error: null };
+    },
+    signOut: async (o?: { scope?: string }) => {
+      authState.signOuts.push(o?.scope ?? 'global');
+      authState.userId = null;
+      return { error: null };
+    },
+  },
+  rpc: async (name: string, args: Record<string, unknown>) => {
+    state.calls.push(name);
+    if (!authState.userId) return { data: null, error: { code: 'PGRST301', message: 'JWT expired' } };
+    return callRpc(state.pool!, 'authenticated', name, args, authState.userId);
+  },
+};
+
 export interface PostOpts {
   origin?: string | null;
   referer?: string;

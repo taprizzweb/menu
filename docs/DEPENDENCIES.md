@@ -9,7 +9,7 @@ in six months use the same code. Nothing is added without being listed here.
 | `next` 15.5.x | The web framework (pages, API routes, middleware). Version 15 was specified by the owner. |
 | `react`, `react-dom` 19.1.x | Required by Next.js. |
 | `@supabase/supabase-js` | Talks to the Supabase database/Auth/Realtime/Storage. |
-| `@supabase/ssr` | Keeps staff login sessions in secure cookies on the server. (Used from Phase 3.) |
+| `@supabase/ssr` | Keeps staff login sessions in cookies, read on the server (`getUser()`), refreshed in middleware, and used by the browser for the Realtime connection. |
 | `zod` 3.x | Validates all incoming data (API inputs, environment variables). Version 3 chosen for maturity. |
 | `server-only` | Makes the build fail if server-only code (e.g. the service-role key) is imported into browser code. |
 

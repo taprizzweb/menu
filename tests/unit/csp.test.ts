@@ -30,6 +30,10 @@ describe('CSP builder (production)', () => {
   it('has no wildcard sources', () => {
     expect(csp).not.toMatch(/\s\*[\s;]|\*$/);
   });
+  it('production over https never allows plain http/ws connections', () => {
+    expect(buildCsp(base)).not.toMatch(/http:\/\/|ws:\/\//);
+    expect(buildCsp({ ...base, secure: false })).toContain('http://proj.supabase.co');
+  });
   it('does not force https upgrades when the site itself is served over plain http (local testing only)', () => {
     expect(buildCsp({ ...base, secure: false })).not.toContain('upgrade-insecure-requests');
   });

@@ -2,14 +2,14 @@
 import { useState } from 'react';
 import { formatPaise } from '@/lib/money';
 import type { MenuItem } from '@/lib/guest/types';
-import type { Lang, Translator } from '@/lib/i18n';
+import type { Translator } from '@/lib/i18n';
 import type { Cart } from './hooks';
 import { Alert, IconMinus, IconPlus, Notice, Sheet, btnPrimary } from './ui';
 
 export function CartSheet({
-  open, onClose, t, lang, cart, items, placing, error, adjusted, onPlace,
+  open, onClose, t, cart, items, placing, error, adjusted, onPlace,
 }: {
-  open: boolean; onClose: () => void; t: Translator; lang: Lang; cart: Cart; items: Map<string, MenuItem>;
+  open: boolean; onClose: () => void; t: Translator; cart: Cart; items: Map<string, MenuItem>;
   placing: boolean; error: string | null; adjusted: boolean; onPlace: () => void;
 }) {
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
@@ -24,7 +24,7 @@ export function CartSheet({
             {cart.lines.map((l) => {
               const item = items.get(l.id);
               if (!item) return null;
-              const name = lang === 'hi' && item.name_hi ? item.name_hi : item.name_en;
+              const name = item.name_en;
               const noteOpen = openNotes.has(l.id) || !!l.note;
               return (
                 <li key={l.id} className="py-3">

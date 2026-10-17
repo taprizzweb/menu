@@ -34,3 +34,12 @@ export const sessionOf = async (tableId: string) =>
   (await q<{ id: string }>(`select id from public.table_sessions where table_id = $1 order by opened_at desc limit 1`, [tableId]))[0]?.id;
 export const ordersOf = (tableId: string) =>
   q<{ id: string; order_no: number; status: string; total_paise: number; note: string | null }>(`select id, order_no, status, total_paise, note from public.orders where table_id = $1 order by created_at`, [tableId]);
+
+/** Closes every open table of a restaurant so a test starts from an empty live board (other tests leave orders behind). */
+export async function clearBoard(slug = 'spice-garden'): Promise<void> {
+  await q(
+    `update public.table_sessions set closed_at = now(), close_reason = 'forced'
+      where closed_at is null and restaurant_id = (select id from public.restaurants where slug = $1)`,
+    [slug],
+  );
+}

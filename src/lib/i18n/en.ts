@@ -1,8 +1,6 @@
 export const en = {
   // header / chrome
   'app.table': 'Table {label}',
-  'app.language': 'हिन्दी',
-  'app.languageLabel': 'Switch language to Hindi',
   'app.privacy': 'Privacy',
   'app.poweredBy': 'Powered by GoToMenu',
   // menu
@@ -128,6 +126,7 @@ export const en = {
   'error.origin_not_allowed': 'This request was blocked for your safety. Please reload the page.',
   'error.unsupported_media_type': 'Something went wrong. Please reload the page.',
   'error.payload_too_large': 'That request is too large. Please shorten your notes.',
+  'error.invalid_credentials': 'Incorrect email or password.',
   'error.unauthorized': 'Your session has ended. Scan the QR code to continue.',
   'error.method_not_allowed': 'Something went wrong. Please reload the page.',
   'error.server_error': 'Something went wrong on our side. Please try again.',

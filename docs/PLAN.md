@@ -199,3 +199,10 @@ Reply **"go"** (with any answers/changes) and I will start Phase 1.
 - **Seed script** (two demo restaurants, 40+ dishes with Hindi names) moves to Phase 2, where the UI exists to show it. The SQL tests already
   use two fully populated restaurants with all four roles.
 - Staff-account creation/deactivation functions (`owner` only) arrive with the dashboard in Phase 4.
+
+## Changes made while building Phases 2-3
+- **English only** (owner decision): Hindi UI, Hindi privacy text and Hindi demo names removed. The database still has the unused `name_hi` / `description_hi` columns; they are harmless and can be dropped later.
+- **Throttling counts failures, not traffic** (found by a test): many honest guests share one cafe wifi address, so only wrong QR tokens (20 per address per 10 min) and failed sign-ins (20 per address, 8 per account) are counted. Migration 0012 adds `guest_rate_check` / `guest_rate_hit`.
+- **Staff reads go through three SQL functions** (`staff_me`, `staff_get_board`, `staff_list_items`, migration 0011) instead of direct table reads, and all staff actions go through server routes that call the existing role-checked SQL functions with the signed-in user's token.
+- **Local test stack now emulates Supabase login** (email + password, signed tokens) so the real sign-in flow is tested in a browser. Realtime is not emulated (polling covers it).
+- Bulk availability is capped at 300 dishes per request (fits the 16 KB request limit).

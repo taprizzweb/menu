@@ -1,9 +1,12 @@
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { newNonce, securityHeaders } from '@/lib/security/csp';
 
 // Edge-safe: only reads NEXT_PUBLIC_* values (inlined at build time). The full env check runs at boot
 // in instrumentation.ts.
-export function middleware(request: NextRequest) {
+const PROTECTED = /^\/(staff|dash|admin)(\/|$)/;
+
+export async function middleware(request: NextRequest) {
   const nonce = newNonce();
   const requestId = crypto.randomUUID();
   const headers = securityHeaders({
@@ -19,9 +22,35 @@ export function middleware(request: NextRequest) {
   requestHeaders.set('x-request-id', requestId);
   requestHeaders.set('Content-Security-Policy', headers['Content-Security-Policy']!);
 
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
-  for (const [k, v] of Object.entries(headers)) response.headers.set(k, v);
-  response.headers.set('x-request-id', requestId);
+  const decorate = (res: NextResponse) => {
+    for (const [k, v] of Object.entries(headers)) res.headers.set(k, v);
+    res.headers.set('x-request-id', requestId);
+    return res;
+  };
+  let response = decorate(NextResponse.next({ request: { headers: requestHeaders } }));
+
+  if (PROTECTED.test(request.nextUrl.pathname)) {
+    // Refreshes the session cookie when needed and proves the user with Supabase (getUser, never getSession).
+    const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '', {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (list) => {
+          for (const { name, value } of list) request.cookies.set(name, value);
+          response = decorate(NextResponse.next({ request: { headers: requestHeaders } }));
+          for (const { name, value, options } of list) response.cookies.set(name, value, options);
+        },
+      },
+    });
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) {
+      const to = request.nextUrl.clone();
+      to.pathname = '/login';
+      to.search = `?next=${encodeURIComponent(request.nextUrl.pathname)}`;
+      const redirect = decorate(NextResponse.redirect(to));
+      for (const c of response.cookies.getAll()) redirect.cookies.set(c);
+      return redirect;
+    }
+  }
   return response;
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatPaise, lineTotal, parseRupeesToPaise, assertPaise } from '@/lib/money';
-import { en, hi, makeT, errorMessageKey } from '@/lib/i18n';
+import { en, t, errorMessageKey } from '@/lib/i18n';
 import { ACCENTS, contrastRatio } from '@/lib/accent';
 import { COUNTER_INSTRUCTION, counterInstruction } from '@/lib/pay';
 import { SQL_ERRORS, fromDbError } from '@/lib/errors';
@@ -37,39 +37,24 @@ describe('money', () => {
   });
 });
 
-describe('translations', () => {
-  it('every English key has a Hindi translation, and nothing extra', () => {
-    expect(Object.keys(hi).sort()).toEqual(Object.keys(en).sort());
-  });
-  it('no translation is empty and Hindi strings keep the same {placeholders}', () => {
-    const ph = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join(',');
-    for (const k of Object.keys(en) as (keyof typeof en)[]) {
-      expect(hi[k].trim().length, k).toBeGreaterThan(0);
-      expect(ph(hi[k]), k).toBe(ph(en[k]));
-    }
-  });
-  it('Hindi UI text is actually Hindi (Devanagari) for sentences', () => {
-    const exempt = new Set(['app.language', 'app.poweredBy', 'help.pay.upi', 'thanks.rate']);
-    for (const k of Object.keys(en) as (keyof typeof en)[]) {
-      if (exempt.has(k)) continue;
-      expect(/[ऀ-ॿ]/.test(hi[k]), `${k}: ${hi[k]}`).toBe(true);
-    }
+describe('user-facing text', () => {
+  it('no message is empty', () => {
+    for (const k of Object.keys(en) as (keyof typeof en)[]) expect(en[k].trim().length, k).toBeGreaterThan(0);
   });
   it('interpolates variables and leaves unknown placeholders visible', () => {
-    expect(makeT('en')('app.table', { label: '5' })).toBe('Table 5');
-    expect(makeT('hi')('app.table', { label: '5' })).toBe('टेबल 5');
-    expect(makeT('en')('app.table')).toBe('Table {label}');
+    expect(t('app.table', { label: '5' })).toBe('Table 5');
+    expect(t('app.table')).toBe('Table {label}');
   });
-  it('every API error key the server can return has a message in both languages', () => {
-    const keys = [...Object.values(SQL_ERRORS).map((e) => e.key), 'origin_not_allowed', 'unsupported_media_type', 'payload_too_large', 'unauthorized', 'method_not_allowed', 'server_error'];
+  it('every API error key the server can return has a message', () => {
+    const keys = [...Object.values(SQL_ERRORS).map((e) => e.key), 'origin_not_allowed', 'unsupported_media_type', 'payload_too_large', 'unauthorized', 'invalid_credentials', 'method_not_allowed', 'server_error'];
     for (const k of keys) {
       const mk = errorMessageKey(k);
       expect(mk, k).toBe(`error.${k}`);
       expect(en[mk]).toBeTruthy();
-      expect(hi[mk]).toBeTruthy();
     }
     expect(errorMessageKey('something_new')).toBe('error.server_error');
     expect(errorMessageKey(undefined)).toBe('error.server_error');
+    expect(errorMessageKey('constructor')).toBe('error.server_error');
   });
   it('button copy is verb-first (no OK / Submit / Proceed)', () => {
     for (const v of Object.values(en)) expect(v).not.toMatch(/^(OK|Submit|Proceed|Yes|No)$/);
