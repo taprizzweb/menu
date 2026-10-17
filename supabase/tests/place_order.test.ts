@@ -210,6 +210,16 @@ describe('guest_place_order: anti-spam caps', () => {
     await db.admin(`update public.rate_limits set window_start = now() - interval '2 minutes' where key = $1`, [key]);
     expect((await db.as<{ r: boolean }>('service_role', null, `select public.guest_rate_limit($1, 2, 60) r`, [key]))[0]!.r).toBe(true);
   });
+  it('stale counters (older than a day, i.e. hashed IPs) are deleted automatically as the limiter is used', async () => {
+    await db.admin(`insert into public.rate_limits (key, window_start, count) values ('stale-ip-key', now() - interval '2 days', 1)`);
+    // ~2% of calls clean up; 1500 calls make a miss astronomically unlikely (0.98^1500 = 7e-14)
+    for (let i = 0; i < 1500; i++) {
+      await db.as('service_role', null, `select public.guest_rate_limit($1, 1000000, 600)`, ['cleanup-probe']);
+      const [r] = await db.admin<{ n: number }>(`select count(*)::int n from public.rate_limits where key = 'stale-ip-key'`);
+      if (r!.n === 0) return;
+    }
+    throw new Error('stale rate-limit row was never purged');
+  });
   it('old counters are purged', async () => {
     await db.admin(`insert into public.rate_limits (key, window_start, count) values ('old-key', now() - interval '3 days', 1)`);
     const [r] = await db.as<{ n: number }>('service_role', null, `select public.guest_purge_rate_limits() n`);

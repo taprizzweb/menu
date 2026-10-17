@@ -20,7 +20,7 @@ const config = [
     files: ['supabase/tests/**', 'tests/**'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   },
-  { files: ['scripts/**', 'supabase/tests/**', 'tests/**'], rules: { 'no-console': 'off' } },
+  { files: ['scripts/**', 'supabase/tests/**', 'supabase/seed/**', 'tests/**'], rules: { 'no-console': 'off' } },
 ];
 
 export default config;

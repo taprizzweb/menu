@@ -30,6 +30,9 @@ describe('CSP builder (production)', () => {
   it('has no wildcard sources', () => {
     expect(csp).not.toMatch(/\s\*[\s;]|\*$/);
   });
+  it('does not force https upgrades when the site itself is served over plain http (local testing only)', () => {
+    expect(buildCsp({ ...base, secure: false })).not.toContain('upgrade-insecure-requests');
+  });
   it('adds a Sentry origin only when configured', () => {
     expect(buildCsp({ ...base, sentryOrigin: 'https://o1.ingest.sentry.io' })).toContain('https://o1.ingest.sentry.io');
     expect(csp).not.toContain('sentry');

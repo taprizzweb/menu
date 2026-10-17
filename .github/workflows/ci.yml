@@ -48,6 +48,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: API tests (route handlers against real Postgres)
+        run: npm run test:api
       - name: SQL tests against real Postgres (isolation, roles, state machine, races)
         run: npm run test:sql
       - name: Every table has RLS and anon has no access
@@ -62,3 +64,14 @@ jobs:
         run: npm run check:secrets
       - name: Security headers on a running server
         run: npm run test:http
+      - name: Install browser for end-to-end tests
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests (phone and tablet) incl. accessibility scan
+        run: E2E_SKIP_BUILD=1 npm run test:e2e
+      - name: Upload failure screenshots and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: test-results
+          retention-days: 7

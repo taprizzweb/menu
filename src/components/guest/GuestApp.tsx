@@ -1,0 +1,210 @@
+'use client';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { formatPaise } from '@/lib/money';
+import { ApiFailure, askBill, callWaiter, placeOrder } from '@/lib/guest/client';
+import type { MenuData, MenuItem, PayMode, WaiterReason } from '@/lib/guest/types';
+import { LANG_COOKIE, errorMessageKey, makeT, type Lang } from '@/lib/i18n';
+import { CartSheet } from './CartSheet';
+import { BillSheet, WaiterSheet } from './HelpSheets';
+import { MenuView } from './MenuView';
+import { StatusView, ThankYou } from './StatusView';
+import { forgetIdempotencyKey, idempotencyKeyFor, useCart, useLiveStatus } from './hooks';
+import { IconBell, IconCart, IconList, IconReceipt, Notice, Alert } from './ui';
+
+export function GuestApp({
+  menu, slug, token, initialLang, hasCookie, imageBase,
+}: {
+  menu: MenuData; slug: string; token: string | null; initialLang: Lang; hasCookie: boolean; imageBase: string;
+}) {
+  const router = useRouter();
+  const [lang, setLang] = useState<Lang>(initialLang);
+  const t = useMemo(() => makeT(lang), [lang]);
+  const categories = useMemo(() => menu.categories ?? [], [menu.categories]);
+  const items = useMemo(() => new Map<string, MenuItem>(categories.flatMap((c) => c.items).map((i) => [i.id, i])), [categories]);
+  const cart = useCart(slug, items);
+
+  const tokenValid = !!menu.token_valid && !!token;
+  const [view, setView] = useState<'menu' | 'status'>('menu');
+  const [hasSession, setHasSession] = useState(hasCookie);
+  const [sheet, setSheet] = useState<null | 'cart' | 'waiter' | 'bill'>(null);
+  const [placing, setPlacing] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [helpBusy, setHelpBusy] = useState(false);
+  const [helpError, setHelpError] = useState<string | null>(null);
+  const [online, setOnline] = useState(true);
+  const placingRef = useRef(false);
+  const autoShown = useRef(false);
+
+  const live = useLiveStatus(slug, hasSession && tokenValid);
+  // Ignore a session that belongs to a different table than the QR just scanned.
+  const status = live.data && (!menu.table_label || live.data.table_label === menu.table_label) ? live.data : null;
+  const closed = status?.state === 'closed';
+  const openRequests = status?.state === 'open' ? (status.requests ?? []) : [];
+  const waiterReq = openRequests.find((r) => r.type === 'waiter');
+  const billReq = openRequests.find((r) => r.type === 'bill');
+  const orderCount = status?.state === 'open' ? (status.orders ?? []).filter((o) => o.status !== 'cancelled').length : 0;
+
+  const msg = useCallback(
+    (e: unknown): string => {
+      if (e instanceof ApiFailure) {
+        const base = e.key === 'network' ? t('error.network') : t(errorMessageKey(e.key));
+        return e.requestId && e.status >= 500 ? `${base} ${t('error.reference', { id: e.requestId.slice(0, 8) })}` : base;
+      }
+      return t('error.server_error');
+    },
+    [t],
+  );
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    setOnline(navigator.onLine);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
+
+  // A returning guest whose table was just settled sees the thank-you screen straight away (once).
+  useEffect(() => {
+    if (closed && !autoShown.current) {
+      autoShown.current = true;
+      setView('status');
+    }
+  }, [closed]);
+
+  const switchLang = () => {
+    const next: Lang = lang === 'en' ? 'hi' : 'en';
+    setLang(next);
+    document.cookie = `${LANG_COOKIE}=${next}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
+  };
+
+  const place = async () => {
+    if (placingRef.current || !token || cart.lines.length === 0) return;
+    placingRef.current = true;
+    setPlacing(true);
+    setOrderError(null);
+    const payload = { items: cart.lines.map((l) => ({ item_id: l.id, qty: l.qty, ...(l.note?.trim() ? { note: l.note.trim() } : {}) })), note: cart.note.trim() || undefined };
+    try {
+      await placeOrder({ slug, token, ...payload, idempotency_key: idempotencyKeyFor(slug, JSON.stringify(payload)) });
+      forgetIdempotencyKey(slug);
+      cart.clear();
+      setSheet(null);
+      setHasSession(true);
+      setView('status');
+      live.refresh();
+      window.scrollTo({ top: 0 });
+    } catch (e) {
+      setOrderError(msg(e));
+      // Sold-out / removed dishes: reload the menu so the cart can be corrected.
+      if (e instanceof ApiFailure && (e.key === 'item_unavailable' || e.key === 'item_not_found')) router.refresh();
+    } finally {
+      placingRef.current = false;
+      setPlacing(false);
+    }
+  };
+
+  const help = async (fn: () => Promise<unknown>) => {
+    if (helpBusy) return;
+    setHelpBusy(true);
+    setHelpError(null);
+    try {
+      await fn();
+      setHasSession(true);
+      live.refresh();
+    } catch (e) {
+      setHelpError(msg(e));
+    } finally {
+      setHelpBusy(false);
+    }
+  };
+
+  const accent = menu.restaurant.accent ?? 'saffron';
+  const canOrder = tokenValid;
+  const showStatus = view === 'status';
+
+  return (
+    <div data-accent={accent} className="min-h-dvh pb-44">
+      <header className="mx-auto flex max-w-2xl items-start justify-between gap-3 px-4 pb-3 pt-5">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-extrabold leading-tight">{menu.restaurant.name}</h1>
+          {menu.table_label && (
+            <p className="mt-2 inline-flex rounded-full border-2 border-accent bg-white px-3 py-0.5 text-sm font-bold text-accent">{t('app.table', { label: menu.table_label })}</p>
+          )}
+        </div>
+        <button type="button" onClick={switchLang} aria-label={t('app.languageLabel')} lang={lang === 'en' ? 'hi' : 'en'} className="flex min-h-11 shrink-0 items-center rounded-full border border-stone-300 bg-white px-4 text-sm font-bold">
+          {t('app.language')}
+        </button>
+      </header>
+
+      {!online && <div className="mx-auto max-w-2xl px-4 pb-2"><Notice>{t('state.offline')}</Notice></div>}
+      {!tokenValid && (
+        <div className="mx-auto max-w-2xl px-4 pb-2">
+          {token ? <Alert>{t('state.invalidQr.title')}. {t('state.invalidQr.body')}</Alert> : <Notice>{t('state.noQr.title')}. {t('state.noQr.body')}</Notice>}
+        </div>
+      )}
+
+      <main>
+        {showStatus && closed && status ? (
+          <ThankYou data={status} t={t} onBack={() => setView('menu')} />
+        ) : showStatus ? (
+          <StatusView data={status} lang={lang} t={t} onAddMore={() => setView('menu')} />
+        ) : (
+          <MenuView categories={categories} lang={lang} t={t} canOrder={canOrder} imageBase={imageBase} qtyOf={cart.qtyOf} onAdd={cart.add} onSet={cart.setQty} />
+        )}
+      </main>
+
+      {canOrder && !(showStatus && closed) && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)]">
+          <div className="mx-auto max-w-2xl space-y-2 px-3 py-2">
+            {!showStatus && cart.count > 0 && (
+              <button type="button" onClick={() => { setOrderError(null); setSheet('cart'); }} className="flex min-h-14 w-full items-center justify-between rounded-xl bg-accent px-4 text-white">
+                <span className="flex items-center gap-2 font-bold"><IconCart /> {t('cart.view')} · {cart.count === 1 ? t('cart.item') : t('cart.items', { n: cart.count })}</span>
+                <span className="text-lg font-extrabold">{formatPaise(cart.totalPaise)}</span>
+              </button>
+            )}
+            {(waiterReq || billReq) && (
+              <p className="text-center text-sm font-semibold text-green-800" role="status">
+                {waiterReq && t('help.waiterOnWay')}{waiterReq && billReq && ' · '}{billReq && t('help.billOnWay')}
+              </p>
+            )}
+            <div className="flex gap-2">
+              {hasSession && status?.state !== 'expired' && (
+                <button type="button" onClick={() => { setView(showStatus ? 'menu' : 'status'); window.scrollTo({ top: 0 }); }} className="flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-xl border border-stone-300 bg-white text-sm font-bold">
+                  <IconList /> {showStatus ? t('status.menu') : t('status.myOrders')}
+                </button>
+              )}
+              {!closed && (
+                <>
+                  <button type="button" onClick={() => { setHelpError(null); setSheet('waiter'); }} className="flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-xl border border-stone-300 bg-white text-sm font-bold">
+                    <IconBell /> {t('help.callWaiter')}
+                  </button>
+                  <button type="button" onClick={() => { setHelpError(null); setSheet('bill'); }} disabled={orderCount === 0 && !billReq && hasSession && status !== null} aria-describedby={orderCount === 0 && !billReq ? 'bill-hint' : undefined} className="flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-xl border border-stone-300 bg-white text-sm font-bold disabled:opacity-50">
+                    <IconReceipt /> {t('help.askBill')}
+                  </button>
+                </>
+              )}
+            </div>
+            <span id="bill-hint" className="sr-only">{t('help.billNeedsOrder')}</span>
+          </div>
+        </div>
+      )}
+
+      <CartSheet open={sheet === 'cart'} onClose={() => setSheet(null)} t={t} lang={lang} cart={cart} items={items} placing={placing} error={orderError} adjusted={cart.adjusted} onPlace={place} />
+      <WaiterSheet open={sheet === 'waiter'} onClose={() => setSheet(null)} t={t} openRequest={waiterReq} busy={helpBusy} error={helpError} onPick={(r: WaiterReason) => token && void help(() => callWaiter(slug, token, r))} />
+      <BillSheet open={sheet === 'bill'} onClose={() => setSheet(null)} t={t} openRequest={billReq} busy={helpBusy} error={helpError} onPick={(m: PayMode) => token && void help(() => askBill(slug, token, m))} />
+
+      <footer className="mx-auto max-w-2xl px-4 pb-4 pt-8 text-center text-xs text-stone-600">
+        <Link href="/privacy" className="inline-flex min-h-11 min-w-11 items-center justify-center px-3 underline underline-offset-2">{t('app.privacy')}</Link> · {t('app.poweredBy')}
+      </footer>
+    </div>
+  );
+}

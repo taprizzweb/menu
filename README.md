@@ -3,7 +3,7 @@
 QR table ordering for cafes and restaurants. Guests scan, order and call the waiter from their phone; staff see
 live orders on one screen. No online payments: the table is marked paid by staff.
 
-Status: **Phase 1 (foundation + database) complete.** See `docs/PLAN.md` for the full plan.
+Status: **Phase 2 (guest app) complete.** See `docs/PLAN.md` for the full plan.
 
 ## Commands
 | Command | What it does |
@@ -17,6 +17,9 @@ Status: **Phase 1 (foundation + database) complete.** See `docs/PLAN.md` for the
 | `npm run audit` | Dependency audit gate |
 | `npm run build` | Production build (fails on invalid environment settings) |
 | `npm run check:secrets` | After a build: proves server secrets are not in browser files |
+| `npm run test:api` | Route handlers (order, status, request, review, health) against real Postgres |
+| `npm run test:e2e` | Real-browser tests (phone + tablet) against the full local stack, incl. accessibility scan |
+| `npm run seed` | Loads the two demo restaurants into the STAGING Supabase project |
 | `npm run test:http` | Starts the built app and asserts the security headers on real responses |
 
 SQL tests need a Postgres 16 superuser. Default: `postgres://gm_test:gm_test@127.0.0.1:5432/postgres`

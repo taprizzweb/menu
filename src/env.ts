@@ -2,7 +2,9 @@ import { z } from 'zod';
 
 const isProd = process.env.NODE_ENV === 'production';
 
-const httpsInProd = (v: string) => !isProd || v.startsWith('https://');
+// Plain http is only tolerated for loopback (local testing); a real deployment can never be 127.0.0.1.
+const isLoopback = (v: string) => /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(v);
+const httpsInProd = (v: string) => !isProd || v.startsWith('https://') || isLoopback(v);
 
 const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().refine(httpsInProd, 'must start with https:// in production'),

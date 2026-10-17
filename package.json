@@ -13,11 +13,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
     "test:sql": "vitest run --project sql",
+    "test:api": "vitest run --project api",
     "check:rls": "tsx scripts/check-rls.ts",
     "check:secrets": "tsx scripts/check-bundle-secrets.ts",
     "audit": "tsx scripts/audit.ts",
     "test:http": "tsx scripts/with-server.ts -- vitest run --project http",
-    "check:secret-scan": "tsx scripts/secret-scan.ts"
+    "check:secret-scan": "tsx scripts/secret-scan.ts",
+    "test:e2e": "tsx scripts/run-e2e.ts",
+    "seed": "tsx supabase/seed/run.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
@@ -29,7 +32,9 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@eslint/eslintrc": "3.3.3",
+    "@playwright/test": "1.56.1",
     "@types/node": "22.19.0",
     "@types/pg": "8.23.1",
     "@types/react": "19.1.17",

@@ -10,6 +10,7 @@ export function middleware(request: NextRequest) {
     nonce,
     dev: process.env.NODE_ENV !== 'production',
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://invalid.supabase.co',
+    secure: (process.env.NEXT_PUBLIC_APP_ORIGIN ?? 'https://').startsWith('https://'),
   });
 
   // Next.js reads the nonce from the request's CSP header and stamps it on its own <script> tags.

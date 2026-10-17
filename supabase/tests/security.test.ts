@@ -96,7 +96,7 @@ describe('function privileges', () => {
     const auth = await execBy('authenticated');
     expect(auth.filter((n) => n.startsWith('guest_') || n.startsWith('admin_'))).toEqual([]);
     const svc = await execBy('service_role');
-    expect(svc.filter((n) => n.startsWith('guest_')).length).toBeGreaterThanOrEqual(7);
+    expect(svc.filter((n) => n.startsWith('guest_')).length).toBeGreaterThanOrEqual(8);
     expect(svc.filter((n) => n.startsWith('admin_')).length).toBeGreaterThanOrEqual(7);
   });
   it('staff_* and mgr_* are executable by authenticated only', async () => {

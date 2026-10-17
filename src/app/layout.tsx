@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { LANG_COOKIE, isLang } from '@/lib/i18n';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -15,8 +16,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // created per request in middleware, and a statically pre-built page could not carry it (its scripts would
   // be blocked by the browser). tests/http/headers.test.ts guards this.
   await headers();
+  const lang = (await cookies()).get(LANG_COOKIE)?.value;
   return (
-    <html lang="en">
+    <html lang={isLang(lang) ? lang : 'en'}>
       <body>{children}</body>
     </html>
   );

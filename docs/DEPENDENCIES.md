@@ -24,9 +24,11 @@ in six months use the same code. Nothing is added without being listed here.
 | `tsx` | Runs the TypeScript check scripts in `scripts/`. |
 | `@types/node`, `@types/react`, `@types/react-dom` | Type definitions. |
 
+| `@playwright/test` 1.56.1 | Drives a real browser for the end-to-end tests (phone and tablet sizes). Pinned to the version matching the browser build available in our test environment. |
+| `@axe-core/playwright` | Automated WCAG accessibility scan inside those browser tests. |
+
 ## Added in later phases (will be listed here when added)
 - `qrcode` — table QR codes as SVG (Phase 4)
-- `@playwright/test`, `@axe-core/playwright` — end-to-end and accessibility tests (Phase 6)
 - `@sentry/nextjs` — error reporting with PII scrubbing (Phase 5)
 - `autocannon` or k6 — load test (Phase 6)
 

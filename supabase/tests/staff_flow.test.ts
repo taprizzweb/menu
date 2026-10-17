@@ -408,3 +408,52 @@ describe('sold-out toggle', () => {
     await db.admin(`update public.restaurants set status = 'active' where id = $1`, [w.A.rid]);
   });
 });
+
+describe('requests identified by the table QR token', () => {
+  const byToken = (t: { token: string }, type: string, reason: string | null, mode: string | null, slug = w.A.slug) =>
+    db.as<{ r: { session_id: string; table_label: string; request: Record<string, string> } }>('service_role', null, `select public.guest_request_by_token($1,$2,$3,$4,$5,null) r`, [slug, t.token, type, reason, mode]);
+  const byTokenErr = (t: { token: string }, type: string, reason: string | null, mode: string | null, slug = w.A.slug) =>
+    db.asErr('service_role', null, `select public.guest_request_by_token($1,$2,$3,$4,$5,null)`, [slug, t.token, type, reason, mode]);
+
+  it('a waiter call before any order opens the table session; repeating it is idempotent', async () => {
+    const t = await freshTable();
+    const a = await byToken(t, 'waiter', 'water', null);
+    const b = await byToken(t, 'waiter', 'cutlery', null);
+    expect(a[0]!.r.session_id).toBe(b[0]!.r.session_id);
+    expect(a[0]!.r.table_label).toBe(t.label);
+    expect(b[0]!.r.request.reason).toBe('water');
+    const [n] = await db.admin<{ n: number }>(`select count(*)::int n from public.table_sessions where table_id = $1`, [t.id]);
+    expect(n!.n).toBe(1);
+  });
+  it('an order placed afterwards joins that same session', async () => {
+    const t = await freshTable();
+    const a = await byToken(t, 'waiter', 'help', null);
+    const o = await placeOrder(db, w.A, t, [{ item_id: w.A.chai, qty: 1 }]);
+    expect(o.session_id).toBe(a[0]!.r.session_id);
+  });
+  it('a bill request needs an open session with an order', async () => {
+    const t = await freshTable();
+    expect((await byTokenErr(t, 'bill', null, 'cash'))?.code).toBe('GM016');
+    await byToken(t, 'waiter', 'help', null); // session exists but no order yet
+    expect((await byTokenErr(t, 'bill', null, 'cash'))?.code).toBe('GM016');
+    await placeOrder(db, w.A, t, [{ item_id: w.A.chai, qty: 1 }]);
+    expect((await byToken(t, 'bill', null, 'upi'))[0]!.r.request.pay_mode).toBe('upi');
+  });
+  it('rejects bad tokens, tokens of another restaurant, rotated tokens, inactive tables and suspended restaurants', async () => {
+    const t = await freshTable();
+    expect((await byTokenErr({ token: 'a'.repeat(64) }, 'waiter', 'water', null))?.code).toBe('GM002');
+    expect((await byTokenErr(t, 'waiter', 'water', null, w.B.slug))?.code).toBe('GM002');
+    await db.admin(`update public.restaurants set status = 'suspended' where id = $1`, [w.A.rid]);
+    expect((await byTokenErr(t, 'waiter', 'water', null))?.code).toBe('GM001');
+    await db.admin(`update public.restaurants set status = 'active' where id = $1`, [w.A.rid]);
+    await db.admin(`update public.dining_tables set active = false where id = $1`, [t.id]);
+    expect((await byTokenErr(t, 'waiter', 'water', null))?.code).toBe('GM002');
+  });
+  it('validates input and is not callable by staff or anon', async () => {
+    const t = await freshTable();
+    expect((await byTokenErr(t, 'refund', 'water', null))?.code).toBe('GM015');
+    expect((await byTokenErr(t, 'waiter', 'dance', null))?.code).toBe('GM015');
+    expect((await db.asErr('authenticated', w.A.owner, `select public.guest_request_by_token($1,$2,'waiter','water',null,null)`, [w.A.slug, t.token]))?.code).toBe('42501');
+    expect((await db.asErr('anon', null, `select public.guest_request_by_token($1,$2,'waiter','water',null,null)`, [w.A.slug, t.token]))?.code).toBe('42501');
+  });
+});

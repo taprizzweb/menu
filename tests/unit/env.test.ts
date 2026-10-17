@@ -46,3 +46,23 @@ describe('server env validation', () => {
     }
   });
 });
+
+describe('production URL rules', () => {
+  it('accepts https and loopback http, rejects other plain http (checked in a production-mode process)', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const probe = `
+      import { parseServerEnv } from './src/env';
+      const good = ${JSON.stringify(good)};
+      const ok = (u) => { try { parseServerEnv({ ...good, NEXT_PUBLIC_SUPABASE_URL: u }); return true; } catch { return false; } };
+      console.log(JSON.stringify({
+        https: ok('https://abc.supabase.co'),
+        loop1: ok('http://127.0.0.1:54321'),
+        loop2: ok('http://localhost:54321'),
+        plain: ok('http://abc.supabase.co'),
+        sneaky: ok('http://127.0.0.1.evil.com'),
+        sneaky2: ok('http://localhost.evil.com'),
+      }));`;
+    const r = spawnSync('node_modules/.bin/tsx', ['-e', probe], { env: { ...process.env, NODE_ENV: 'production' }, encoding: 'utf8' });
+    expect(JSON.parse(r.stdout.trim())).toEqual({ https: true, loop1: true, loop2: true, plain: false, sneaky: false, sneaky2: false });
+  });
+});

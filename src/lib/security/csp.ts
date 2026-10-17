@@ -6,9 +6,11 @@ export interface CspOptions {
   supabaseUrl: string;
   /** Optional error-reporting ingest origin, e.g. https://o123.ingest.sentry.io */
   sentryOrigin?: string;
+  /** The site itself is served over https (false only for local http testing): controls upgrade-insecure-requests. */
+  secure?: boolean;
 }
 
-export function buildCsp({ nonce, dev, supabaseUrl, sentryOrigin }: CspOptions): string {
+export function buildCsp({ nonce, dev, supabaseUrl, sentryOrigin, secure = true }: CspOptions): string {
   const supabase = new URL(supabaseUrl);
   const supabaseHttps = `https://${supabase.host}`;
   const supabaseWss = `wss://${supabase.host}`;
@@ -35,7 +37,7 @@ export function buildCsp({ nonce, dev, supabaseUrl, sentryOrigin }: CspOptions):
     'form-action': ["'self'"],
   };
   const parts = Object.entries(directives).map(([k, v]) => `${k} ${v.join(' ')}`);
-  if (!dev) parts.push('upgrade-insecure-requests');
+  if (!dev && secure) parts.push('upgrade-insecure-requests');
   return parts.join('; ');
 }
 
