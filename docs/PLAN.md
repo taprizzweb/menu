@@ -177,3 +177,25 @@ Staff/dash writes use server actions or route handlers that call the RPCs with t
 
 ---
 Reply **"go"** (with any answers/changes) and I will start Phase 1.
+
+
+---
+
+## Changes made while building Phase 1 (honest log)
+
+- **Merged functions:** `staff_cancel_order` is part of `staff_set_order_status` (cancel is a status, kitchen is refused inside it).
+  `guest_update_bill_mode` is not needed: asking for the bill again with a different payment mode updates the open request,
+  so the route `POST /api/guest/request/mode` is dropped.
+- **New functions:** `mgr_get_table_tokens`, `mgr_rotate_table_token`, `mgr_create_tables` (owner/manager), `guest_rate_limit`
+  (used by routes before ordering), `guest_health`, `guest_purge_rate_limits`, and `admin_*` (create, status, plan, list, audit, export, delete).
+- **Rate limiting design (found by a test):** a failed call rolls back its own counter, so failed attempts (e.g. guessing QR tokens)
+  are throttled by the route handler through `guest_rate_limit`, which commits on its own. Inside `guest_place_order` the per-IP cap
+  counts successful orders only (60 per 10 minutes, generous because many guests share one cafe wifi address).
+- **Deadlock fixed (found by a stress test):** closing a table while a guest orders used to deadlock in about 1 of 6 races.
+  The restaurant row is now locked with `FOR NO KEY UPDATE`. 300 further racing pairs: zero deadlocks.
+- **Every page is rendered per request** (required so the security nonce reaches the page scripts); found by the header test.
+- **Production build refuses to run with missing/invalid settings**, so a bad configuration can never replace a working site.
+- **Dependency audit:** production dependencies have 0 known vulnerabilities; remaining dev-only findings are listed in `docs/DEPENDENCIES.md`.
+- **Seed script** (two demo restaurants, 40+ dishes with Hindi names) moves to Phase 2, where the UI exists to show it. The SQL tests already
+  use two fully populated restaurants with all four roles.
+- Staff-account creation/deactivation functions (`owner` only) arrive with the dashboard in Phase 4.
