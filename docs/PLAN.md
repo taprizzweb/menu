@@ -16,7 +16,11 @@ Nothing is created until you say "go". When we reach each step I will give click
 | Sentry (error tracking) | Phase 5 | you create | Free tier (5k events/month) is enough to start |
 | Uptime monitor (UptimeRobot or similar) | Phase 6 | you create | Free tier |
 
-Realistic running cost to go live: roughly **US$45–50/month (~₹4,000)** plus ₹0 for the rest. Staging can stay on free tiers.
+**Pilot model (owner decision):** the first ~50 restaurants get the product free as a gift, using the owner's separate Supabase account. So for the pilot the plan is Supabase Free + Vercel Hobby = ₹0/month. Known limits of that choice, to be re-checked before real restaurants depend on it:
+- Supabase Free **auto-pauses after 7 days of no activity** (a quiet restaurant would find its menu down) and has **no backups**. Leaked-password protection is a paid-plan feature, so it will be off.
+- Vercel Hobby terms say personal, non-commercial use only. A free gift to businesses is a grey area; Vercel may disagree. Pro (about US$20/month) removes the doubt.
+- Free database compute is small; the 300-guest load test may not reach p95 < 500 ms there.
+Recommendation: build and test on free; before the first real restaurant goes live, move only the production Supabase project to Pro (about US$25 / ₹2,100 a month) for backups and no auto-pause. I will not do this without your approval.
 
 Until Phase 6 everything runs on a throwaway local Postgres inside my work environment. It costs nothing and touches no real data.
 
