@@ -5,8 +5,7 @@
  * Only what is built is shown. Nothing is mocked: every click goes through the real pages, API and database.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { chromium, type Locator, type Page } from '@playwright/test';
 
 const INFO = '/tmp/gotomenu-demo-stack.json';
@@ -51,7 +50,7 @@ async function main() {
 }
 
 // ---------------------------------------------------------------- on-screen helpers (visible cursor, click ripple)
-const overlay = (tag: string) => `(() => {
+const overlay = () => `(() => {
   const css = \`
   #__cur{position:fixed;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:rgba(239,68,68,.5);border:3px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.4);z-index:2147483647;pointer-events:none;transition:transform .12s linear;opacity:0}
   .__rip{position:fixed;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:5px solid rgba(239,68,68,.95);z-index:2147483646;pointer-events:none;animation:__rip .7s ease-out forwards}
@@ -111,14 +110,13 @@ async function record() {
   const staffCtx = await browser.newContext({ viewport: { width: 1280, height: 880 }, bypassCSP: true, hasTouch: true, recordVideo: { dir: `${OUT}/raw/staff`, size: { width: 1280, height: 880 } } });
   const guestCtx = await browser.newContext({ // A roomy phone-shaped screen: the recording is captured at CSS-pixel size, so a bigger screen is what makes it sharp.
     viewport: { width: 480, height: 1040 }, isMobile: true, hasTouch: true, bypassCSP: true, recordVideo: { dir: `${OUT}/raw/guest`, size: { width: 480, height: 1040 } } });
-  await staffCtx.addInitScript(overlay('staff'));
-  await guestCtx.addInitScript(overlay('guest'));
+  await staffCtx.addInitScript(overlay());
+  await guestCtx.addInitScript(overlay());
   const staff = await staffCtx.newPage();
   const guest = await guestCtx.newPage();
   videoZero = Date.now();
 
   // wait helpers
-  const staffSees = (text: string | RegExp, timeout = 15000) => staff.getByText(text).first().waitFor({ timeout });
   const orderCard = () => staff.locator('li[data-testid^="order-"]', { hasText: 'Table 7' }).first();
   const dlg = (p: Page) => p.getByRole('dialog');
   const addDish = async (name: string, times = 1) => {
