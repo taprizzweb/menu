@@ -16,7 +16,7 @@ async function handle(req: Request, { params }: Ctx, method: 'GET' | 'POST') {
   const isStaff = Object.hasOwn(STAFF_ACTIONS, action);
   if (!def && !isStaff) return staffRoute(req, { method }, async () => { throw new ApiError(404, 'not_found'); });
   const wanted = def ? def.method : STAFF_ACTIONS[action]!.method;
-  return staffRoute(req, { method: wanted, schema: (def ?? STAFF_ACTIONS[action])!.schema }, async (ctx, body) => {
+  return staffRoute(req, { method: wanted, maxBytes: action === 'menu-import' ? 300 * 1024 : undefined, schema: (def ?? STAFF_ACTIONS[action])!.schema }, async (ctx, body) => {
     if (method !== wanted) throw new ApiError(405, 'method_not_allowed');
     await limit(`dm:${ctx.userId}`, 300, 60);
     if (isStaff) return handleStaffAction(action, ctx, body);

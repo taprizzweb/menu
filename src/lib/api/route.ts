@@ -36,11 +36,11 @@ export function jsonOk(data: unknown, requestId: string, init: { status?: number
   return NextResponse.json(data, { status: init.status ?? 200, headers: { ...NO_STORE, 'x-request-id': requestId } });
 }
 
-async function readJson(req: Request): Promise<unknown> {
+async function readJson(req: Request, maxBytes = MAX_BODY_BYTES): Promise<unknown> {
   const declared = Number(req.headers.get('content-length') ?? '0');
-  if (declared > MAX_BODY_BYTES) throw new ApiError(413, 'payload_too_large');
+  if (declared > maxBytes) throw new ApiError(413, 'payload_too_large');
   const text = await req.text();
-  if (Buffer.byteLength(text, 'utf8') > MAX_BODY_BYTES) throw new ApiError(413, 'payload_too_large');
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) throw new ApiError(413, 'payload_too_large');
   try {
     return JSON.parse(text);
   } catch {
@@ -54,6 +54,8 @@ interface Options<B> {
   checkOrigin?: boolean;
   /** Only the "choose your own password" route sets this: everything else is refused until a temporary password is replaced. */
   allowTempPassword?: boolean;
+  /** Body size cap in bytes; only whole-menu import raises it (default 16 KB). */
+  maxBytes?: number;
 }
 
 /**
@@ -77,7 +79,7 @@ async function guarded<B, C extends Ctx>(
     let body = undefined as B;
     if (opts.method === 'POST') {
       if (!isJson(req.headers)) throw new ApiError(415, 'unsupported_media_type');
-      const raw = await readJson(req);
+      const raw = await readJson(req, opts.maxBytes);
       body = opts.schema ? opts.schema.parse(raw) : (raw as B);
     }
     const base: Ctx = { requestId, ipHash: hashIp(clientIp(req.headers), env.IP_HASH_SALT) };

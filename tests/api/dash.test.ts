@@ -128,6 +128,15 @@ describe('menu', () => {
     expect(ok).toEqual({ ok: true, created: 1, updated: 0, categories_created: 1 });
     expect((await post('menu-import', { rows: [] })).status).toBe(400);
   });
+  it('a whole menu (200 dishes, far over the normal 16 KB cap) can be imported; other calls stay capped', async () => {
+    as(w.A.owner);
+    const rows = Array.from({ length: 200 }, (_, i) => ({ category: `Big ${i % 8}`, name: `Dish number ${i} with a fairly long name`, description: 'x'.repeat(200), price_paise: 10000 + i, diet: 'veg', spice: 0, bestseller: false, chef_pick: false, available: true }));
+    const r = await post('menu-import', { rows });
+    expect(r.status).toBe(200);
+    expect(await json(r)).toMatchObject({ ok: true, created: 200 });
+    expect((await post('item-save', { filler: 'x'.repeat(20_000) })).status).toBe(413);
+    expect((await post('menu-import', { rows, filler: 'x'.repeat(400_000) })).status).toBe(413);
+  });
 });
 
 describe('tables and settings', () => {
