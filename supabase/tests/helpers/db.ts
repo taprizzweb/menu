@@ -11,6 +11,8 @@ export type Role = 'anon' | 'authenticated' | 'service_role';
 export interface TestDb {
   name: string;
   pool: Pool;
+  /** assurance level put in the test user's token: 'aal2' (password + second factor) unless a test lowers it */
+  aal: 'aal1' | 'aal2';
   /** Run SQL as the superuser (setup / inspection). */
   admin<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
   /** Run SQL as a database role, optionally impersonating an auth user, in its own transaction. */
@@ -62,7 +64,7 @@ export async function createTestDb(opts: { migrate?: boolean } = {}): Promise<Te
       await c.query(`set local role ${role}`);
       if (userId) {
         await c.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`, [
-          JSON.stringify({ sub: userId, role }),
+          JSON.stringify({ sub: userId, role, aal: db.aal }),
           userId,
         ]);
       }
@@ -79,6 +81,7 @@ export async function createTestDb(opts: { migrate?: boolean } = {}): Promise<Te
 
   const db: TestDb = {
     name,
+    aal: 'aal2',
     pool,
     async admin(sql, params) {
       const r = await pool.query(sql, params as unknown[]);

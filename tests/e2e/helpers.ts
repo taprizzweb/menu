@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import type { Page } from '@playwright/test';
 import { callRpc } from '../../supabase/tests/helpers/rpc';
+import { DEMO_TOTP_SECRET, totp } from '../../supabase/tests/helpers/totp';
 
 const info = JSON.parse(readFileSync(process.env.DEV_STACK_INFO ?? '/tmp/gotomenu-dev-stack.json', 'utf8')) as { db: string };
 const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgres://gm_test:gm_test@127.0.0.1:5432/postgres');
@@ -42,4 +44,14 @@ export async function clearBoard(slug = 'spice-garden'): Promise<void> {
       where closed_at is null and restaurant_id = (select id from public.restaurants where slug = $1)`,
     [slug],
   );
+}
+
+/** After submitting the sign-in form: owners, managers and admins are asked for their authenticator code (demo accounts share a known secret). */
+export async function completeSignIn(page: Page, secret = DEMO_TOTP_SECRET, landing: RegExp = /\/staff$/): Promise<void> {
+  await page.waitForURL(/\/(staff|admin|account\/mfa)(\?.*)?$/);
+  if (page.url().includes('/account/mfa')) {
+    await page.getByLabel('6-digit code').fill(totp(secret));
+    await page.getByRole('button', { name: 'Confirm' }).click();
+  }
+  await page.waitForURL(landing);
 }

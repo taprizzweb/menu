@@ -126,6 +126,7 @@ export const en = {
   'error.conflict': 'That name is already in use. Please choose a different one.',
   'error.protected': 'Owner accounts can only be changed by the platform administrator.',
   'error.password_change_required': 'Please choose your own password before continuing.',
+  'error.mfa_required': 'Please finish two-step sign-in first.',
   'error.forbidden': 'You do not have permission to do that.',
   'error.origin_not_allowed': 'This request was blocked for your safety. Please reload the page.',
   'error.unsupported_media_type': 'Something went wrong. Please reload the page.',

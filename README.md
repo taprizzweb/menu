@@ -3,7 +3,7 @@
 QR table ordering for cafes and restaurants. Guests scan, order and call the waiter from their phone; staff see
 live orders on one screen. No online payments: the table is marked paid by staff.
 
-Status: **Phase 4 (owner/manager dashboard) complete.** English only. See `docs/PLAN.md` for the full plan.
+Status: **Phase 5 (platform admin, two-step sign-in, hardening, threat model) complete.** English only. See `docs/PLAN.md` for the full plan.
 
 ## Commands
 | Command | What it does |

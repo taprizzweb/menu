@@ -5,8 +5,11 @@ import { ZodError, type ZodType } from 'zod';
 import { serverEnv } from '@/env';
 import { ApiError, type ErrorKey } from '@/lib/errors';
 import { log } from '@/lib/log';
+import { captureError } from '@/lib/monitoring';
 import { MAX_BODY_BYTES, isAllowedOrigin, isJson } from '@/lib/security/origin';
 import { clientIp, hashIp } from '@/lib/security/ip';
+import { aalFromToken, type Aal } from '@/lib/auth/aal';
+import { rpc } from '@/lib/guest/rpc';
 import { userClient } from '@/lib/supabase/server';
 
 export interface Ctx {
@@ -19,6 +22,8 @@ export interface StaffCtx extends Ctx {
   userId: string;
   /** database client that acts as the signed-in staff member (RLS + role checks apply) */
   db: SupabaseClient;
+  /** aal2 = signed in with password AND a second factor */
+  aal: Aal | null;
 }
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
@@ -88,6 +93,7 @@ async function guarded<B, C extends Ctx>(
       error: e instanceof Error ? e.message : String(e),
       dbCode: (e as { dbCode?: string }).dbCode,
     });
+    captureError(e, { requestId, route: new URL(req.url).pathname });
     return jsonError(500, 'server_error', requestId);
   }
 }
@@ -107,8 +113,21 @@ export function staffRoute<B = undefined>(req: Request, opts: Options<B>, run: (
       const { data, error } = await db.auth.getUser();
       if (error || !data.user) throw new ApiError(401, 'unauthorized');
       if (!opts.allowTempPassword && data.user.app_metadata?.must_change_password === true) throw new ApiError(403, 'password_change_required');
-      return { ...ctx, userId: data.user.id, db };
+      const { data: sess } = await db.auth.getSession();
+      return { ...ctx, userId: data.user.id, db, aal: aalFromToken(sess.session?.access_token) };
     },
     run,
   );
+}
+
+/**
+ * Platform-admin route (/api/admin/*): the caller must be signed in, have chosen their own password, have completed the
+ * second factor (aal2) AND be listed in platform_admins. Anyone else gets a plain 403/404-style answer.
+ */
+export function adminRoute<B = undefined>(req: Request, opts: Options<B>, run: (ctx: StaffCtx, body: B) => Promise<Response>): Promise<Response> {
+  return staffRoute(req, opts, async (ctx, body) => {
+    if (ctx.aal !== 'aal2') throw new ApiError(403, 'mfa_required');
+    if (!(await rpc<boolean>('admin_check', { p_user: ctx.userId }))) throw new ApiError(403, 'forbidden');
+    return run(ctx, body);
+  });
 }

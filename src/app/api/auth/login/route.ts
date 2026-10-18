@@ -1,7 +1,7 @@
 import { guestRoute, jsonOk } from '@/lib/api/route';
 import { serverEnv } from '@/env';
 import { ApiError } from '@/lib/errors';
-import { guard, penalize } from '@/lib/guest/rpc';
+import { guard, penalize, rpc } from '@/lib/guest/rpc';
 import { loginBody, safeNext } from '@/lib/schemas/staff';
 import { hashIp } from '@/lib/security/ip';
 import { staffRpc } from '@/lib/staff/rpc';
@@ -29,10 +29,12 @@ export async function POST(req: Request) {
 
     // A valid login that is not (or no longer) an active staff member gets the same generic answer.
     const me = await staffRpc<unknown>(db, 'staff_me').catch(() => null);
-    if (!me) {
+    const { data: who } = await db.auth.getUser();
+    const isAdmin = !me && !!who.user && (await rpc<boolean>('admin_check', { p_user: who.user.id }).catch(() => false));
+    if (!me && !isAdmin) {
       await db.auth.signOut();
       return fail(401, 'invalid_credentials');
     }
-    return jsonOk({ ok: true, next: safeNext(body.next) }, ctx.requestId);
+    return jsonOk({ ok: true, next: isAdmin && !body.next ? '/admin' : safeNext(body.next) }, ctx.requestId);
   });
 }

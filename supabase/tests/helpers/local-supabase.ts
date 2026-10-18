@@ -11,6 +11,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import type { Pool } from 'pg';
 import { callRpc } from './rpc';
+import { newSecret, totpValid } from './totp';
 
 const MAX_UPLOAD_BYTES = 2_097_152;
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -72,17 +73,21 @@ function multipartFile(body: Buffer, contentType: string): { data: Buffer; type:
 
 export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?: number } = {}): Promise<Server> {
   const ttl = opts.ttlSeconds ?? 3600;
-  const refreshTokens = new Map<string, string>(); // refresh token -> user id
+  const refreshTokens = new Map<string, { id: string; aal: 'aal1' | 'aal2' }>(); // refresh token -> user id and assurance level
+  const challenges = new Map<string, string>(); // challenge id -> factor id
 
-  const userJson = (id: string, email: string, app_metadata: object = {}) => ({ id, aud: 'authenticated', role: 'authenticated', email, app_metadata, user_metadata: {}, created_at: new Date().toISOString() });
+  const userJson = async (id: string, email: string, app_metadata: object = {}) => ({
+    id, aud: 'authenticated', role: 'authenticated', email, app_metadata, user_metadata: {}, created_at: new Date().toISOString(),
+    factors: (await pool.query(`select id, friendly_name, factor_type, status from auth.mfa_factors where user_id = $1 order by created_at`, [id])).rows,
+  });
   const files = new Map<string, { data: Buffer; type: string }>();
-  const session = (id: string, email: string, app_metadata: object = {}) => {
+  const session = async (id: string, email: string, app_metadata: object = {}, aal: 'aal1' | 'aal2' = 'aal1') => {
     const now = Math.floor(Date.now() / 1000);
     const refresh = randomUUID();
-    refreshTokens.set(refresh, id);
+    refreshTokens.set(refresh, { id, aal });
     return {
-      access_token: signJwt({ sub: id, email, role: 'authenticated', aud: 'authenticated', aal: 'aal1', app_metadata, iat: now, exp: now + ttl }),
-      token_type: 'bearer', expires_in: ttl, expires_at: now + ttl, refresh_token: refresh, user: userJson(id, email, app_metadata),
+      access_token: signJwt({ sub: id, email, role: 'authenticated', aud: 'authenticated', aal, amr: [{ method: aal === 'aal2' ? 'totp' : 'password', timestamp: now }], app_metadata, iat: now, exp: now + ttl }),
+      token_type: 'bearer', expires_in: ttl, expires_at: now + ttl, refresh_token: refresh, user: await userJson(id, email, app_metadata),
     };
   };
 
@@ -116,14 +121,14 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
           const u = rows[0];
           // seeded demo users have no stored password and use the shared demo password
           if (!u || body.password !== (u.password ?? DEMO_PASSWORD)) return send(res, 400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' }, origin);
-          return send(res, 200, session(u.id, u.email, u.app_metadata), origin);
+          return send(res, 200, await session(u.id, u.email, u.app_metadata), origin);
         }
         if (grant === 'refresh_token') {
-          const id = refreshTokens.get(String(body.refresh_token));
-          if (!id) return send(res, 400, { code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token' }, origin);
+          const prev = refreshTokens.get(String(body.refresh_token));
+          if (!prev) return send(res, 400, { code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token' }, origin);
           refreshTokens.delete(String(body.refresh_token));
-          const { rows } = await pool.query<{ email: string; app_metadata: object }>(`select email, app_metadata from auth.users where id = $1`, [id]);
-          return send(res, 200, session(id, rows[0]!.email, rows[0]!.app_metadata), origin);
+          const { rows } = await pool.query<{ email: string; app_metadata: object }>(`select email, app_metadata from auth.users where id = $1`, [prev.id]);
+          return send(res, 200, await session(prev.id, rows[0]!.email, rows[0]!.app_metadata, prev.aal), origin);
         }
         return send(res, 400, { msg: 'unsupported grant' }, origin);
       }
@@ -140,7 +145,49 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
             await pool.query(`update auth.users set password = $2 where id = $1`, [claims.sub, body.password]);
           }
         }
-        return send(res, 200, userJson(claims.sub, rows[0].email, rows[0].app_metadata), origin);
+        return send(res, 200, await userJson(claims.sub, rows[0].email, rows[0].app_metadata), origin);
+      }
+      // ---- second factor (TOTP), same shapes as Supabase Auth
+      const mfa = /^\/auth\/v1\/factors(?:\/([0-9a-f-]{36})(?:\/(challenge|verify))?)?$/.exec(url.pathname);
+      if (mfa) {
+        const claims = bearer ? verifyJwt(bearer) : null;
+        if (!claims || claims.role !== 'authenticated') return send(res, 401, { code: 401, error_code: 'bad_jwt', msg: 'invalid JWT' }, origin);
+        const [, fid, op] = mfa;
+        if (!fid && req.method === 'POST') {
+          const b = await readBody(req);
+          const secret = newSecret();
+          const r = await pool.query<{ id: string }>(`insert into auth.mfa_factors (user_id, friendly_name, secret) values ($1,$2,$3) returning id`, [claims.sub, String(b.friendly_name ?? 'phone'), secret]);
+          const { rows } = await pool.query<{ email: string }>(`select email from auth.users where id = $1`, [claims.sub]);
+          const uri = `otpauth://totp/${encodeURIComponent(String(b.issuer ?? 'GoToMenu'))}:${encodeURIComponent(rows[0]!.email)}?secret=${secret}&issuer=${encodeURIComponent(String(b.issuer ?? 'GoToMenu'))}`;
+          const qr = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>')}`;
+          return send(res, 200, { id: r.rows[0]!.id, type: 'totp', friendly_name: b.friendly_name, totp: { qr_code: qr, secret, uri } }, origin);
+        }
+        if (fid && !op && req.method === 'DELETE') {
+          if (claims.aal !== 'aal2') {
+            const v = await pool.query(`select 1 from auth.mfa_factors where id = $1 and user_id = $2 and status = 'verified'`, [fid, claims.sub]);
+            if (v.rowCount) return send(res, 422, { code: 422, error_code: 'insufficient_aal', msg: 'AAL2 required to unenroll a verified factor' }, origin);
+          }
+          await pool.query(`delete from auth.mfa_factors where id = $1 and user_id = $2`, [fid, claims.sub]);
+          return send(res, 200, { id: fid }, origin);
+        }
+        if (fid && op === 'challenge' && req.method === 'POST') {
+          const own = await pool.query(`select 1 from auth.mfa_factors where id = $1 and user_id = $2`, [fid, claims.sub]);
+          if (!own.rowCount) return send(res, 404, { code: 404, error_code: 'mfa_factor_not_found', msg: 'MFA factor not found' }, origin);
+          const cid = randomUUID();
+          challenges.set(cid, fid);
+          return send(res, 200, { id: cid, type: 'totp', expires_at: Math.floor(Date.now() / 1000) + 300 }, origin);
+        }
+        if (fid && op === 'verify' && req.method === 'POST') {
+          const b = await readBody(req);
+          const f = await pool.query<{ secret: string; status: string }>(`select secret, status from auth.mfa_factors where id = $1 and user_id = $2`, [fid, claims.sub]);
+          if (!f.rowCount || challenges.get(String(b.challenge_id)) !== fid) return send(res, 400, { code: 400, error_code: 'mfa_challenge_expired', msg: 'MFA challenge has expired, verify against another challenge or create a new challenge.' }, origin);
+          challenges.delete(String(b.challenge_id));
+          if (!totpValid(f.rows[0]!.secret, String(b.code))) return send(res, 400, { code: 400, error_code: 'mfa_verification_failed', msg: 'Invalid TOTP code entered' }, origin);
+          await pool.query(`update auth.mfa_factors set status = 'verified' where id = $1`, [fid]);
+          const u = await pool.query<{ email: string; app_metadata: object }>(`select email, app_metadata from auth.users where id = $1`, [claims.sub]);
+          return send(res, 200, await session(claims.sub, u.rows[0]!.email, u.rows[0]!.app_metadata, 'aal2'), origin);
+        }
+        return send(res, 404, { message: 'not found' }, origin);
       }
       // ---- Auth admin API (service key only)
       const admin = /^\/auth\/v1\/admin\/users(?:\/([0-9a-f-]{36}))?$/.exec(url.pathname);
@@ -153,7 +200,7 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
           const dupe = await pool.query(`select 1 from auth.users where email = $1`, [email]);
           if (dupe.rowCount) return send(res, 422, { code: 422, error_code: 'email_exists', msg: 'A user with this email address has already been registered' }, origin);
           const r = await pool.query<{ id: string }>(`insert into auth.users (email, password, app_metadata) values ($1,$2,$3) returning id`, [email, b.password ?? null, JSON.stringify(b.app_metadata ?? {})]);
-          return send(res, 200, userJson(r.rows[0]!.id, email, b.app_metadata ?? {}), origin);
+          return send(res, 200, await userJson(r.rows[0]!.id, email, b.app_metadata ?? {}), origin);
         }
         if (id && req.method === 'PUT') {
           const b = await readBody(req);
@@ -161,7 +208,7 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
           if (!cur.rows[0]) return send(res, 404, { code: 404, error_code: 'user_not_found', msg: 'User not found' }, origin);
           const meta = { ...cur.rows[0].app_metadata, ...(b.app_metadata ?? {}) };
           await pool.query(`update auth.users set password = coalesce($2, password), app_metadata = $3 where id = $1`, [id, b.password ?? null, JSON.stringify(meta)]);
-          return send(res, 200, userJson(id, cur.rows[0].email, meta), origin);
+          return send(res, 200, await userJson(id, cur.rows[0].email, meta), origin);
         }
         if (id && req.method === 'DELETE') {
           await pool.query(`delete from auth.users where id = $1`, [id]);
@@ -183,7 +230,7 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
         try {
           await c.query('begin');
           await c.query('set local role authenticated');
-          await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: claims.sub, role: 'authenticated' })]);
+          await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: claims.sub, role: 'authenticated', aal: claims.aal })]);
           await c.query(`insert into storage.objects (bucket_id, name, owner) values ('menu-images', $1, $2)`, [path, claims.sub]);
           await c.query('commit');
         } catch {
@@ -209,14 +256,16 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
       if (m && req.method === 'POST') {
         let role: 'service_role' | 'authenticated' | 'anon' = 'anon';
         let sub: string | undefined;
+        let aal: 'aal1' | 'aal2' = 'aal1';
         if (bearer === LOCAL_SERVICE_KEY) role = 'service_role';
         else if (bearer && bearer !== LOCAL_ANON_KEY) {
           const claims = verifyJwt(bearer);
           if (!claims) return send(res, 401, { code: 'PGRST301', message: 'JWT invalid or expired' }, origin);
           role = 'authenticated';
           sub = claims.sub;
+          aal = claims.aal === 'aal2' ? 'aal2' : 'aal1';
         }
-        const r = await callRpc(pool, role, m[1]!, await readBody(req), sub);
+        const r = await callRpc(pool, role, m[1]!, await readBody(req), sub, aal);
         if (r.error) return send(res, r.error.code === '42501' ? 403 : 400, r.error, origin);
         return send(res, 200, r.data, origin);
       }

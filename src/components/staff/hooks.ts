@@ -16,7 +16,10 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiFailure('network', 0);
   }
   const body = (await res.json().catch(() => null)) as { error?: { key?: string }; requestId?: string } | null;
-  if (!res.ok) throw new ApiFailure(body?.error?.key ?? 'server_error', res.status, body?.requestId);
+  if (!res.ok) {
+    if (res.status === 403 && body?.error?.key === 'mfa_required') window.location.assign('/account/mfa?next=/staff');
+    throw new ApiFailure(body?.error?.key ?? 'server_error', res.status, body?.requestId);
+  }
   return body as T;
 }
 export const apiGet = <T,>(path: string) => api<T>(path);

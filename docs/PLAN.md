@@ -215,3 +215,11 @@ Reply **"go"** (with any answers/changes) and I will start Phase 1.
 - **QR codes** are drawn on the server as SVG. Print layouts: A4 sheet (6 per page) and table tents (A4 landscape, two mirrored halves that fold into a tent).
 - **Fix from Phase 3 review:** the guest bill sheet now shows a newly chosen payment method at once instead of after the next refresh.
 - Not yet verifiable here (needs the real Supabase project in Phase 6): Auth rules for passwords (leaked-password check), real Storage policies, Realtime.
+
+## Changes made while building Phase 5
+- **Second factor is enforced in the database, not only in the screens** (migration 0014): an owner or manager session that has not completed the authenticator step is "nobody" to every policy and every SQL function (error GM021 `mfa_required`). Waiters and kitchen staff are exempt by design. `supabase/tests/mfa.test.ts` was mutation-checked (turning the check off makes five tests fail).
+- **Two-step pages and routes** (`/account/mfa`, `/api/auth/mfa/enroll|verify`): setup with QR + typed key, 5 wrong codes per 10 minutes then a block. Middleware sends anyone without it away from `/dash` and `/admin`; `/staff` decides by role.
+- **Platform admin** (`/admin`, `/api/admin/*`): create restaurant + owner login (temporary password once, forced change, then forced authenticator setup), suspend/activate, plan and paid-until, last-activity list, any restaurant's activity log, JSON export, delete with typed confirmation (also removes staff logins and photos). Non-admins get a plain "not found". Admins sign in through the normal login page (they have no restaurant). First admin: `docs/ADMIN.md`.
+- **Error reporting without an SDK**: a small server-side Sentry reporter (nothing sent unless `SENTRY_DSN` is set; emails, ids, tokens, phone numbers scrubbed; max 20 events a minute). Browser-side errors are not reported (keeps third-party code out of the browser).
+- **Hardening:** staff session cookies are now explicitly `SameSite=Lax` and `Secure` on https. Threat model written: `docs/THREAT_MODEL.md`.
+- **Test-stand-in additions:** local Auth now emulates TOTP factors, aal1/aal2 tokens and the admin API. Real Supabase TOTP, leaked-password check and session time-boxing are only verifiable on staging (Phase 6).

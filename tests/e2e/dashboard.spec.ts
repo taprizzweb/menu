@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { q } from './helpers';
+import { completeSignIn, q } from './helpers';
 import { DEMO_PASSWORD } from '../../supabase/tests/helpers/local-supabase';
 
 type AxePage = ConstructorParameters<typeof AxeBuilder>[0]['page'];
@@ -17,7 +17,7 @@ async function loginAs(page: Page, role: 'owner' | 'manager' | 'waiter', path = 
     await page.getByLabel('Email').fill(email(role));
     await page.getByLabel('Password').fill(DEMO_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/staff$/);
+    await completeSignIn(page);
     sessions.set(role, await page.context().cookies());
   }
   await page.goto(path);

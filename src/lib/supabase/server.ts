@@ -13,6 +13,7 @@ export async function userClient(): Promise<SupabaseClient> {
   const jar = await cookies();
   const env = serverEnv();
   return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+    cookieOptions: { sameSite: 'lax', secure: env.NEXT_PUBLIC_APP_ORIGIN.startsWith('https://') },
     cookies: {
       getAll: () => jar.getAll(),
       setAll: (list) => {

@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { clearBoard, newTable, q } from './helpers';
+import { clearBoard, completeSignIn, newTable, q } from './helpers';
 import { DEMO_PASSWORD } from '../../supabase/tests/helpers/local-supabase';
 
 type AxePage = ConstructorParameters<typeof AxeBuilder>[0]['page'];
@@ -12,6 +12,7 @@ async function login(page: Page, who: string, password = DEMO_PASSWORD) {
   await page.getByLabel('Email').fill(who);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
+  await completeSignIn(page);
 }
 // Sign in through the real form once per account, then reuse that session's cookies. (Sign-in is deliberately throttled:
 // 20 per address and 8 per account in a few minutes, so tests must not sign in over and over.)

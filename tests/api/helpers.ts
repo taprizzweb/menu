@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { callRpc } from '../../supabase/tests/helpers/rpc';
+import { newSecret, totpValid } from '../../supabase/tests/helpers/totp';
 
 export const APP = 'https://gotomenu.taprizz.in';
 
@@ -53,7 +54,12 @@ export const authState = {
   /** per-user login details the fake Auth service remembers (password and server-only metadata) */
   meta: new Map<string, { password?: string; app_metadata: Record<string, unknown> }>(),
   deleted: [] as string[],
+  /** assurance level of the current session: aal2 = password + second factor (the default keeps older tests simple) */
+  aal: 'aal2' as 'aal1' | 'aal2',
+  /** second factors the fake Auth service knows, per user */
+  factors: new Map<string, { id: string; secret: string; status: 'unverified' | 'verified' }[]>(),
 };
+const fakeToken = () => `h.${Buffer.from(JSON.stringify({ aal: authState.aal })).toString('base64url')}.s`;
 
 /**
  * Stand-in for the cookie-based Supabase client: getUser() answers with `authState.userId`, rpc() runs the real SQL
@@ -78,6 +84,30 @@ export const fakeUserClient = {
       authState.userId = r.rows[0]!.id;
       return { data: { session: {} }, error: null };
     },
+    getSession: async () => ({ data: { session: authState.userId ? { access_token: fakeToken() } : null }, error: null }),
+    mfa: {
+      listFactors: async () => {
+        const all = (authState.factors.get(authState.userId ?? '') ?? []).map((f) => ({ id: f.id, status: f.status, factor_type: 'totp' }));
+        return { data: { all, totp: all.filter((f) => f.status === 'verified') }, error: null };
+      },
+      enroll: async () => {
+        const f = { id: randomUUID(), secret: newSecret(), status: 'unverified' as const };
+        authState.factors.set(authState.userId!, [...(authState.factors.get(authState.userId!) ?? []), f]);
+        return { data: { id: f.id, type: 'totp', totp: { qr_code: 'data:image/svg+xml;utf8,%3Csvg%2F%3E', secret: f.secret, uri: 'otpauth://x' } }, error: null };
+      },
+      unenroll: async ({ factorId }: { factorId: string }) => {
+        authState.factors.set(authState.userId!, (authState.factors.get(authState.userId!) ?? []).filter((f) => f.id !== factorId));
+        return { data: { id: factorId }, error: null };
+      },
+      challenge: async ({ factorId }: { factorId: string }) => ({ data: { id: `ch-${factorId}` }, error: null }),
+      verify: async ({ factorId, code }: { factorId: string; challengeId: string; code: string }) => {
+        const f = (authState.factors.get(authState.userId ?? '') ?? []).find((x) => x.id === factorId);
+        if (!f || !totpValid(f.secret, code)) return { data: null, error: { status: 400, message: 'Invalid TOTP code entered' } };
+        f.status = 'verified';
+        authState.aal = 'aal2';
+        return { data: {}, error: null };
+      },
+    },
     signOut: async (o?: { scope?: string }) => {
       authState.signOuts.push(o?.scope ?? 'global');
       authState.userId = null;
@@ -87,7 +117,7 @@ export const fakeUserClient = {
   rpc: async (name: string, args: Record<string, unknown>) => {
     state.calls.push(name);
     if (!authState.userId) return { data: null, error: { code: 'PGRST301', message: 'JWT expired' } };
-    return callRpc(state.pool!, 'authenticated', name, args, authState.userId);
+    return callRpc(state.pool!, 'authenticated', name, args, authState.userId, authState.aal);
   },
 };
 

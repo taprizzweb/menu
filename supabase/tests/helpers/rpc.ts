@@ -35,7 +35,7 @@ async function info(pool: Pool, name: string): Promise<FnInfo | null> {
   return row;
 }
 
-export async function callRpc(pool: Pool, role: 'service_role' | 'anon' | 'authenticated', name: string, args: Record<string, unknown> = {}, userId?: string): Promise<RpcResult> {
+export async function callRpc(pool: Pool, role: 'service_role' | 'anon' | 'authenticated', name: string, args: Record<string, unknown> = {}, userId?: string, aal: 'aal1' | 'aal2' = 'aal2'): Promise<RpcResult> {
   const client = await pool.connect();
   try {
     const fn = await info(pool, name);
@@ -52,7 +52,7 @@ export async function callRpc(pool: Pool, role: 'service_role' | 'anon' | 'authe
     });
     await client.query('begin');
     await client.query(`set local role ${role}`);
-    if (userId) await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: userId, role })]);
+    if (userId) await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: userId, role, aal })]);
     const sql = fn.retset ? `select * from public.${name}(${parts.join(', ')})` : `select public.${name}(${parts.join(', ')}) as r`;
     const res = await client.query(sql, params);
     await client.query('commit');

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { DashNav } from '@/components/dash/DashNav';
 import type { StaffMe } from '@/components/staff/StaffApp';
+import { aalFromToken, mfaUrl } from '@/lib/auth/aal';
 import { userClient } from '@/lib/supabase/server';
 
 export const metadata: Metadata = { title: 'Dashboard' };
@@ -15,6 +16,8 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   if (!m) redirect('/staff');
   // Waiters and kitchen staff only use the live screen.
   if (m.role !== 'owner' && m.role !== 'manager') redirect('/staff');
+  const { data: sess } = await db.auth.getSession();
+  if (aalFromToken(sess.session?.access_token) !== 'aal2') redirect(mfaUrl('/dash/menu'));
   return (
     <div data-accent={m.restaurant.accent} className="min-h-dvh bg-stone-50">
       <DashNav name={m.restaurant.name} role={m.role} slug={m.restaurant.slug} />

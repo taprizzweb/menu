@@ -12,6 +12,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const body = (await res.json().catch(() => null)) as { error?: { key?: string }; requestId?: string } | null;
   if (!res.ok) {
+    if (res.status === 403 && body?.error?.key === 'mfa_required') window.location.assign(`/account/mfa?next=${encodeURIComponent(location.pathname)}`);
     if (res.status === 401) window.location.assign(`/login?next=${encodeURIComponent(location.pathname)}`);
     throw new ApiFailure(body?.error?.key ?? 'server_error', res.status, body?.requestId);
   }
