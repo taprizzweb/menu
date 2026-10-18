@@ -13,7 +13,7 @@ The first time an owner, manager or admin signs in they choose their own passwor
 1. In the Supabase dashboard open **Authentication → Users → Add user → Create new user**. Enter your email and a long password. Tick **Auto Confirm User**.
 2. Open **SQL Editor → New query**, paste the following (use the same email), and click **Run**:
    `insert into public.platform_admins (user_id) select id from auth.users where email = 'YOU@EXAMPLE.COM';`
-3. Go to `https://gotomenu.taprizz.in/login`, sign in, and follow the screens to set up your authenticator app. You land on `/admin`.
+3. Go to `https://menu.taprizz.in/login`, sign in, and follow the screens to set up your authenticator app. You land on `/admin`.
 4. Keep a second device (or the setup key written down and stored safely) in case you lose your phone.
 
 ## What you can do in /admin

@@ -29,3 +29,6 @@ Settings to check in the Supabase dashboard (project "menu"):
 4. **Deployments → Redeploy** after the last variable.
 5. **Settings → Deployment Protection**: for staging with real phones, make sure the production address is not behind Vercel login.
 6. Open `<site>/api/health`: it should answer OK.
+
+## Site address
+The site name is **menu.taprizz.in** (CNAME `menu` → `cname.vercel-dns.com` at the DNS provider, added in Vercel under Settings → Domains). Set `NEXT_PUBLIC_APP_ORIGIN` to `https://menu.taprizz.in` (no trailing slash) and set the same value as the Site URL in Supabase → Authentication → URL Configuration. The `…vercel.app` address keeps working as a fallback.
