@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFile } from 'node:fs/promises';
 import { completeSignIn, q } from './helpers';
 import { DEMO_PASSWORD } from '../../supabase/tests/helpers/local-supabase';
-import { totp } from '../../supabase/tests/helpers/totp';
+import { DEMO_TOTP_SECRET, totp } from '../../supabase/tests/helpers/totp';
 
 type AxePage = ConstructorParameters<typeof AxeBuilder>[0]['page'];
 const SHOTS = 'test-results/shots';
@@ -71,7 +71,7 @@ test.describe('platform admin', () => {
     await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-admin-list.png`, fullPage: true });
   });
 
-  test('creates a restaurant; the owner must change the temporary password, then set up the authenticator, then can sign in with it', async ({ page, browser }) => {
+  test('creates a restaurant; the owner must change the temporary password, then signs in with email + password only', async ({ page, browser }) => {
     const slug = `e2e-${suffix()}`;
     const mail = `${slug}@owner.test`;
     await asAdmin(page);
@@ -95,41 +95,52 @@ test.describe('platform admin', () => {
       await p.getByLabel('Password').fill(temp);
       await p.getByRole('button', { name: 'Sign in' }).click();
       await expect(p).toHaveURL(/\/account\/password$/);
+      await p.goto('/staff');
+      await expect(p).toHaveURL(/\/account\/password$/); // the temporary password cannot be used for anything else
       const pw = `Owner-${suffix()}-long-pass!`;
       await p.getByLabel('New password', { exact: true }).fill(pw);
       await p.getByLabel('Type it again').fill(pw);
       await p.getByRole('button', { name: 'Save password' }).click();
 
-      // password done -> second factor is compulsory before the dashboard or the live screen
-      await expect(p).toHaveURL(/\/account\/mfa\?next=%2Fstaff$/);
+      // no authenticator step for restaurant owners: straight to the live screen and the dashboard
+      await expect(p).toHaveURL(/\/staff$/);
+      await expect(p.getByRole('heading', { level: 1 })).toContainText(`Cafe ${slug}`);
       await p.goto('/dash/menu');
-      await expect(p).toHaveURL(/\/account\/mfa/);
-      await p.getByRole('button', { name: 'Set up authenticator app' }).click();
-      const secret = (await p.getByTestId('mfa-secret').textContent())!.trim();
-      await expect(p.getByAltText('QR code to scan with your authenticator app')).toBeVisible();
-      await p.screenshot({ path: `${SHOTS}/${test.info().project.name}-mfa-setup.png`, fullPage: true });
-      await p.getByLabel('6-digit code').fill('000000');
-      await p.getByRole('button', { name: 'Confirm' }).click();
-      await expect(p.locator('p[role="alert"]')).toContainText('That code is not right');
-      await p.getByLabel('6-digit code').fill(totp(secret));
-      await p.getByRole('button', { name: 'Confirm' }).click();
-      await expect(p).toHaveURL(/\/dash\/menu$/); // sent on to where they were headed
       await expect(p.getByRole('heading', { level: 1, name: 'Menu' })).toBeVisible();
+      expect((await p.request.get('/api/dash/menu')).status()).toBe(200);
 
-      // signing in again asks for the code (no new setup)
+      // signing in again: email + password, nothing else
       await p.request.post('/api/auth/logout', { headers: { origin: new URL(p.url()).origin }, data: { scope: 'local' } });
       await p.goto('/login');
       await p.getByLabel('Email').fill(mail);
       await p.getByLabel('Password').fill(pw);
       await p.getByRole('button', { name: 'Sign in' }).click();
-      await expect(p).toHaveURL(/\/account\/mfa\?next=%2Fstaff$/);
-      await expect(p.getByRole('button', { name: 'Set up authenticator app' })).toHaveCount(0);
-      await p.goto('/dash/menu');
-      await expect(p).toHaveURL(/\/account\/mfa/); // still only a password: no way in
-      expect((await p.request.get('/api/dash/menu')).status()).toBe(403);
-      await p.getByLabel('6-digit code').fill(totp(secret));
+      await expect(p).toHaveURL(/\/staff$/);
+      // ...but this account is not a platform admin and cannot reach /admin
+      expect((await p.goto('/admin'))?.status()).toBe(404);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('the platform admin still needs the authenticator code: a password alone does not open /admin', async ({ browser }) => {
+    const ctx = await browser.newContext(test.info().project.use as never);
+    const p = await ctx.newPage();
+    try {
+      await p.goto('/login');
+      await p.getByLabel('Email').fill('admin@gotomenu.demo');
+      await p.getByLabel('Password').fill(DEMO_PASSWORD);
+      await p.getByRole('button', { name: 'Sign in' }).click();
+      await expect(p).toHaveURL(/\/account\/mfa/);
+      await p.goto('/admin');
+      await expect(p).toHaveURL(/\/account\/mfa/);
+      expect((await p.request.get('/api/admin/restaurants')).status()).toBe(403);
+      await p.getByLabel('6-digit code').fill('000000');
       await p.getByRole('button', { name: 'Confirm' }).click();
-      await expect(p).toHaveURL(/\/dash\/menu$/);
+      await expect(p.locator('p[role="alert"]')).toContainText('That code is not right');
+      await p.getByLabel('6-digit code').fill(totp(DEMO_TOTP_SECRET));
+      await p.getByRole('button', { name: 'Confirm' }).click();
+      await expect(p).toHaveURL(/\/admin$/);
     } finally {
       await ctx.close();
     }

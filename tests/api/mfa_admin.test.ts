@@ -45,27 +45,23 @@ import { POST as dashPOST } from '@/app/api/dash/[action]/route';
 const adminlessPost = (a: string, body: unknown) => dashPOST(req(`/api/dash/${a}`, body), aCtx(a));
 const aGet = (a: string, q = '') => adminGET(req(`/api/admin/${a}${q}`), aCtx(a));
 
-describe('second factor is enforced in the database for owners and managers', () => {
-  it('an owner or manager with only a password (aal1) is refused by the dashboard and the live board', async () => {
+describe('restaurant staff need only email + password', () => {
+  it('owners, managers, waiters and kitchen work with a password-only session (aal1)', async () => {
     for (const uid of [w.A.owner, w.A.manager]) {
       as(uid, 'aal1');
-      const r = await dashGET(req('/api/dash/menu'), aCtx('menu'));
-      expect(r.status).toBe(403);
-      expect((await json(r)).error.key).toBe('mfa_required');
-      const b = await boardGET(req('/api/staff/board'));
-      expect(b.status).toBe(403);
-      expect((await json(b)).error.key).toBe('mfa_required');
+      expect((await dashGET(req('/api/dash/menu'), aCtx('menu'))).status).toBe(200);
+      expect((await boardGET(req('/api/staff/board'))).status).toBe(200);
     }
-  });
-  it('waiters and kitchen staff are not asked for a second factor', async () => {
     for (const uid of [w.A.waiter, w.A.kitchen]) {
       as(uid, 'aal1');
       expect((await boardGET(req('/api/staff/board'))).status).toBe(200);
     }
   });
-  it('with the second factor (aal2) they work as before', async () => {
-    as(w.A.owner, 'aal2');
-    expect((await dashGET(req('/api/dash/menu'), aCtx('menu'))).status).toBe(200);
+  it('roles still apply: waiters and strangers cannot use the dashboard', async () => {
+    for (const uid of [w.A.waiter, w.stranger]) {
+      as(uid, 'aal1');
+      expect((await dashGET(req('/api/dash/menu'), aCtx('menu'))).status).toBe(403);
+    }
   });
 });
 

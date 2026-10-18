@@ -55,7 +55,7 @@ export async function middleware(request: NextRequest) {
       return redirect;
     }
     if (data.user && /^\/admin(\/|$)/.test(path)) {
-      // /admin always needs the second factor. /staff and /dash decide by role in the page (waiters need none); the database enforces it for owners and managers anyway.
+      // /admin always needs the second factor (platform admins only). Restaurant staff, owners and managers use email + password.
       const { data: sess } = await supabase.auth.getSession();
       if (aalFromToken(sess.session?.access_token) !== 'aal2') {
         const to = request.nextUrl.clone();

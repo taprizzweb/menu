@@ -223,3 +223,6 @@ Reply **"go"** (with any answers/changes) and I will start Phase 1.
 - **Error reporting without an SDK**: a small server-side Sentry reporter (nothing sent unless `SENTRY_DSN` is set; emails, ids, tokens, phone numbers scrubbed; max 20 events a minute). Browser-side errors are not reported (keeps third-party code out of the browser).
 - **Hardening:** staff session cookies are now explicitly `SameSite=Lax` and `Secure` on https. Threat model written: `docs/THREAT_MODEL.md`.
 - **Test-stand-in additions:** local Auth now emulates TOTP factors, aal1/aal2 tokens and the admin API. Real Supabase TOTP, leaked-password check and session time-boxing are only verifiable on staging (Phase 6).
+
+## Change after Phase 5 (owner decision)
+- **Restaurant owners and managers now sign in with email + password only** (migration 0015 removes the authenticator requirement from the database; the dashboard and staff pages no longer redirect to it). Reason: clients should not have to install an app. **The platform admin still needs the authenticator code** (`/admin`, `/api/admin/*`). The threat model and `docs/ADMIN.md` say so. The security cost is real: a stolen owner password now opens that restaurant's dashboard.

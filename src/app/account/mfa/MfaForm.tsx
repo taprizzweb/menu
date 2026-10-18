@@ -64,7 +64,7 @@ export function MfaForm({ factorId, next }: { factorId: string | null; next: str
         </>
       ) : !setup ? (
         <>
-          <p className="mt-2 text-stone-700">Owners, managers and administrators must protect their account with an authenticator app (Google Authenticator, Microsoft Authenticator, Authy…). It takes one minute.</p>
+          <p className="mt-2 text-stone-700">Platform administrators must protect their account with an authenticator app (Google Authenticator, Microsoft Authenticator, Authy…). It takes one minute.</p>
           {error && <div className="mt-4"><Alert>{error}</Alert></div>}
           <button type="button" onClick={start} disabled={busy} className={`${btnPrimary} mt-6 w-full`}>Set up authenticator app</button>
         </>
