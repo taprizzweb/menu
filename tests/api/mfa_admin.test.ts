@@ -110,12 +110,10 @@ describe('authenticator setup and verification routes', () => {
 });
 
 describe('platform admin API', () => {
-  it('needs sign-in, then the second factor, then the platform_admins row', async () => {
+  it('needs sign-in, then the platform_admins row (password only, no authenticator)', async () => {
     expect((await aGet('restaurants')).status).toBe(401);
     as(w.admin, 'aal1');
-    const r = await aGet('restaurants');
-    expect(r.status).toBe(403);
-    expect((await json(r)).error.key).toBe('mfa_required');
+    expect((await aGet('restaurants')).status).toBe(200);
     for (const uid of [w.A.owner, w.A.manager, w.stranger]) {
       as(uid, 'aal2');
       const x = await aGet('restaurants');

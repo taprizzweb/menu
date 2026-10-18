@@ -121,12 +121,10 @@ export function staffRoute<B = undefined>(req: Request, opts: Options<B>, run: (
 }
 
 /**
- * Platform-admin route (/api/admin/*): the caller must be signed in, have chosen their own password, have completed the
- * second factor (aal2) AND be listed in platform_admins. Anyone else gets a plain 403/404-style answer.
+ * Platform-admin route (/api/admin/*): the caller must be signed in, have chosen their own password AND be listed in platform_admins. Anyone else gets a plain 403/404-style answer.
  */
 export function adminRoute<B = undefined>(req: Request, opts: Options<B>, run: (ctx: StaffCtx, body: B) => Promise<Response>): Promise<Response> {
   return staffRoute(req, opts, async (ctx, body) => {
-    if (ctx.aal !== 'aal2') throw new ApiError(403, 'mfa_required');
     if (!(await rpc<boolean>('admin_check', { p_user: ctx.userId }))) throw new ApiError(403, 'forbidden');
     return run(ctx, body);
   });

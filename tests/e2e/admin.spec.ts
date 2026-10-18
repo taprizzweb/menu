@@ -3,7 +3,6 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFile } from 'node:fs/promises';
 import { completeSignIn, q } from './helpers';
 import { DEMO_PASSWORD } from '../../supabase/tests/helpers/local-supabase';
-import { DEMO_TOTP_SECRET, totp } from '../../supabase/tests/helpers/totp';
 
 type AxePage = ConstructorParameters<typeof AxeBuilder>[0]['page'];
 const SHOTS = 'test-results/shots';
@@ -123,7 +122,7 @@ test.describe('platform admin', () => {
     }
   });
 
-  test('the platform admin still needs the authenticator code: a password alone does not open /admin', async ({ browser }) => {
+  test('the platform admin signs in with email + password only and opens /admin', async ({ browser }) => {
     const ctx = await browser.newContext(test.info().project.use as never);
     const p = await ctx.newPage();
     try {
@@ -131,16 +130,8 @@ test.describe('platform admin', () => {
       await p.getByLabel('Email').fill('admin@gotomenu.demo');
       await p.getByLabel('Password').fill(DEMO_PASSWORD);
       await p.getByRole('button', { name: 'Sign in' }).click();
-      await expect(p).toHaveURL(/\/account\/mfa/);
-      await p.goto('/admin');
-      await expect(p).toHaveURL(/\/account\/mfa/);
-      expect((await p.request.get('/api/admin/restaurants')).status()).toBe(403);
-      await p.getByLabel('6-digit code').fill('000000');
-      await p.getByRole('button', { name: 'Confirm' }).click();
-      await expect(p.locator('p[role="alert"]')).toContainText('That code is not right');
-      await p.getByLabel('6-digit code').fill(totp(DEMO_TOTP_SECRET));
-      await p.getByRole('button', { name: 'Confirm' }).click();
       await expect(p).toHaveURL(/\/admin$/);
+      expect((await p.request.get('/api/admin/restaurants')).status()).toBe(200);
     } finally {
       await ctx.close();
     }

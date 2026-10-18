@@ -10,7 +10,6 @@
 import { writeFileSync } from 'node:fs';
 import { createTestDb } from '../supabase/tests/helpers/db';
 import { startLocalSupabase, DEMO_PASSWORD } from '../supabase/tests/helpers/local-supabase';
-import { DEMO_TOTP_SECRET } from '../supabase/tests/helpers/totp';
 import { localUserCreator, seedDemo } from '../supabase/seed/seed';
 
 const PORT = Number(process.env.SHIM_PORT ?? 54321);
@@ -18,17 +17,11 @@ const PORT = Number(process.env.SHIM_PORT ?? 54321);
 async function main() {
   const db = await createTestDb();
   const seeded = await seedDemo(db.pool, { createUser: localUserCreator(db.pool) });
-  // only the platform admin must use a second factor: give that demo account an authenticator with a known secret
-  await db.pool.query(
-    `insert into auth.mfa_factors (user_id, friendly_name, status, secret)
-     select id, 'demo phone', 'verified', $1 from auth.users where email = 'admin@gotomenu.demo'`,
-    [DEMO_TOTP_SECRET],
-  );
   writeFileSync(process.env.DEV_STACK_INFO ?? '/tmp/gotomenu-dev-stack.json', JSON.stringify({ db: db.name, port: PORT, seeded }, null, 2));
 
   const server = await startLocalSupabase(db.pool, PORT);
   console.log(`dev stack ready: database ${db.name}, local Supabase stand-in on http://127.0.0.1:${PORT}`);
-  console.log(`demo logins (password ${DEMO_PASSWORD}): owner@spice-garden.demo, manager@..., waiter@..., kitchen@... (also @cafe-aroma.demo), admin@gotomenu.demo.\nthe admin also needs the authenticator code: secret ${DEMO_TOTP_SECRET}`);
+  console.log(`demo logins (password ${DEMO_PASSWORD}): owner@spice-garden.demo, manager@..., waiter@..., kitchen@... (also @cafe-aroma.demo), admin@gotomenu.demo.`);
   const stop = async () => {
     server.close();
     await db.close();
