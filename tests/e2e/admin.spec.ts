@@ -145,6 +145,19 @@ test.describe('platform admin', () => {
     await expect(dialog(page)).toContainText('shown only once');
     const temp = (await dialog(page).getByTestId('temp-password').textContent())!;
 
+    // add a kitchen login from the same screen
+    await dialog(page).getByRole('button', { name: 'I have saved it' }).click();
+    await page.getByLabel(`Logins of Cafe ${slug}`).click();
+    await dialog(page).getByRole('button', { name: 'Add login' }).click();
+    await dialog(page).getByLabel('Name').fill('Kim Kitchen');
+    await dialog(page).getByLabel('Email', { exact: true }).fill(`${slug}@kitchen.test`);
+    await dialog(page).getByLabel('Role').selectOption('kitchen');
+    await dialog(page).getByRole('button', { name: 'Create login' }).click();
+    await expect(dialog(page)).toContainText('shown only once');
+    await dialog(page).getByRole('button', { name: 'I have saved it' }).click();
+    await page.getByLabel(`Logins of Cafe ${slug}`).click();
+    await expect(dialog(page)).toContainText('Kim Kitchen · kitchen');
+
     const ctx = await browser.newContext(test.info().project.use as never);
     const p = await ctx.newPage();
     try {

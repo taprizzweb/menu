@@ -91,6 +91,28 @@ export const ADMIN_ACTIONS: Record<string, AdminAction> = {
     },
   },
 
+  // New login for a restaurant (owner, manager, waiter or kitchen) with a temporary password shown once.
+  'staff-add': {
+    method: 'POST',
+    schema: S.staffAdd,
+    run: async (ctx, b) => {
+      const admin = adminClient();
+      const password = temporaryPassword();
+      const { data, error } = await admin.auth.admin.createUser({ email: b.email, password, email_confirm: true, app_metadata: { must_change_password: true } });
+      if (error || !data.user) {
+        if (error && /already|exists|registered/i.test(error.message)) throw new ApiError(409, 'conflict');
+        throw Object.assign(new Error('could not create login'), { dbCode: String(error?.status ?? '') });
+      }
+      try {
+        await rpc('admin_add_staff', { p_admin: ctx.userId, p_restaurant: b.id, p_user: data.user.id, p_role: b.role, p_name: b.name });
+      } catch (e) {
+        await admin.auth.admin.deleteUser(data.user.id).catch(() => undefined); // no orphan login if it could not be attached
+        throw e;
+      }
+      return jsonOk({ user_id: data.user.id, email: b.email, temporary_password: password }, ctx.requestId, { status: 201 });
+    },
+  },
+
   // Forgotten password: a new temporary password, shown once, which the person must replace at their next sign-in.
   'staff-reset-password': {
     method: 'POST',

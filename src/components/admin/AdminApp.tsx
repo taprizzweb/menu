@@ -47,6 +47,8 @@ export function AdminApp() {
   const [logins, setLogins] = useState<{ row: Row; staff: StaffRow[] | null } | null>(null);
   const [mailFor, setMailFor] = useState<StaffRow | null>(null);
   const [newMail, setNewMail] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [af, setAf] = useState({ name: '', email: '', role: 'manager' });
   const [del, setDel] = useState<Row | null>(null);
   const [typed, setTyped] = useState('');
   const [secret, setSecret] = useState<{ email: string; slug: string; password: string; title?: string } | null>(null);
@@ -143,7 +145,33 @@ export function AdminApp() {
         </div>
       </Sheet>
 
-      <Sheet open={!!logins} onClose={() => { setLogins(null); setMailFor(null); }} title={`Logins: ${logins?.row.name ?? ''}`} closeLabel="Close">
+      <Sheet open={!!logins} onClose={() => { setLogins(null); setMailFor(null); setAdding(false); }} title={`Logins: ${logins?.row.name ?? ''}`} closeLabel="Close">
+        {logins?.staff && (
+          <div className="mb-3">
+            {!adding ? (
+              <button type="button" className={`${btnPrimary} w-full`} onClick={() => { setErr(null); setAf({ name: '', email: '', role: logins.staff!.some((x) => x.role === 'owner') ? 'manager' : 'owner' }); setAdding(true); }}>Add login</button>
+            ) : (
+              <form className="space-y-3 rounded-xl border border-stone-200 p-3" onSubmit={async (e) => {
+                e.preventDefault();
+                const r = await run(() => adminPost<{ email: string; temporary_password: string }>('staff-add', { id: logins.row.id, email: af.email, name: af.name, role: af.role }));
+                if (r) { setAdding(false); setLogins(null); setSecret({ email: r.email, slug: logins.row.slug, password: r.temporary_password, title: 'Login created' }); }
+              }}>
+                <label className="block text-sm font-semibold">Name<input required maxLength={60} value={af.name} onChange={(e) => setAf({ ...af, name: e.target.value })} className={inputCls} /></label>
+                <label className="block text-sm font-semibold">Email<input type="email" required inputMode="email" value={af.email} onChange={(e) => setAf({ ...af, email: e.target.value })} className={inputCls} /></label>
+                <label className="block text-sm font-semibold">Role
+                  <select value={af.role} onChange={(e) => setAf({ ...af, role: e.target.value })} className={inputCls}>
+                    <option value="owner">Owner</option><option value="manager">Manager</option><option value="waiter">Waiter</option><option value="kitchen">Kitchen</option>
+                  </select>
+                </label>
+                {err && <Alert>{err}</Alert>}
+                <div className="flex gap-2">
+                  <button type="button" className={`${btnSecondary} flex-1`} onClick={() => setAdding(false)}>Cancel</button>
+                  <button type="submit" disabled={busy} className={`${btnPrimary} flex-1`}>Create login</button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
         {!logins?.staff ? <p>Loading…</p> : logins.staff.length === 0 ? <p>No logins for this restaurant.</p> : (
           <ul className="space-y-3">
             {logins.staff.map((m) => (

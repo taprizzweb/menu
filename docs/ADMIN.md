@@ -17,6 +17,9 @@ Nobody is asked for an authenticator code (owner decision). `/admin` still shows
 ## What you can do in /admin
 Create a restaurant and its owner login (a temporary password is shown once), set plan and paid-until date, suspend / activate (a suspended restaurant cannot take orders and its staff cannot change anything), see last order time and total orders, read any restaurant's activity log, download all of a restaurant's data as JSON, and permanently delete a restaurant (you must type its address exactly; its staff logins and photos are removed too).
 
+## Add an owner, manager, waiter or kitchen login
+In `/admin` open the restaurant, tap **Logins**, then **Add login**. Enter name, email and role. A temporary password is shown once; give it to the person, who chooses their own at first sign-in. Use this to give a restaurant (such as one whose owner login was lost) a new owner.
+
 ## Owner forgot the password, or the email is wrong
 In `/admin` open the restaurant and tap **Logins**. Each person shows their email. **Reset password** gives a new temporary password (shown once; they must choose their own at the next sign-in). **Change email** corrects the address (the old one stops working; the password stays). Both are written to the restaurant's activity log. Never delete users in the Supabase dashboard: that also removes their restaurant link.
 

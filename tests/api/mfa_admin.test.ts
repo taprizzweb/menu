@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, type TestDb } from '../../supabase/tests/helpers/db';
 import { buildWorld, type World } from '../../supabase/tests/helpers/fixtures';
@@ -171,6 +172,27 @@ describe('platform admin API', () => {
     as(w.A.owner);
     expect((await aPost('staff-reset-password', { id: w.A.rid, user_id: owner.user_id })).status).toBe(403);
     expect((await aGet('staff', `?id=${w.A.rid}`)).status).toBe(403);
+  });
+  it('adds an owner, manager, waiter or kitchen login with a one-time temporary password; no orphan login on failure', async () => {
+    as(w.admin);
+    for (const role of ['owner', 'manager', 'waiter', 'kitchen']) {
+      const r = await aPost('staff-add', { id: w.B.rid, email: `Added.${role}@Example.test`, name: `Added ${role}`, role });
+      expect(r.status, role).toBe(201);
+      const b = await json(r);
+      expect(b.temporary_password.length).toBeGreaterThanOrEqual(14);
+      expect(authState.meta.get(b.user_id)?.app_metadata).toMatchObject({ must_change_password: true });
+      const [row] = await db.admin<{ role: string; restaurant_id: string; active: boolean }>(`select role, restaurant_id, active from public.staff where user_id = $1`, [b.user_id]);
+      expect(row).toMatchObject({ role, restaurant_id: w.B.rid, active: true });
+    }
+    const dup = await aPost('staff-add', { id: w.B.rid, email: 'added.kitchen@example.test', name: 'Again', role: 'kitchen' });
+    expect(dup.status).toBe(409);
+    expect((await aPost('staff-add', { id: w.B.rid, email: 'x@example.test', name: 'X', role: 'admin' })).status).toBe(400);
+    expect((await aPost('staff-add', { id: randomUUID(), email: 'nobody@example.test', name: 'X', role: 'waiter' })).status).toBe(404);
+    expect(await db.admin(`select 1 from auth.users where email = 'nobody@example.test'`)).toHaveLength(0);
+    const acts = await db.admin<{ actor_role: string }>(`select actor_role from public.audit_log where restaurant_id = $1 and action = 'staff_added'`, [w.B.rid]);
+    expect(acts).toHaveLength(4);
+    as(w.A.owner);
+    expect((await aPost('staff-add', { id: w.A.rid, email: 'sneaky@example.test', name: 'S', role: 'owner' })).status).toBe(403);
   });
   it('refuses duplicate slugs, reserved slugs, bad emails and does not leave a login behind', async () => {
     as(w.admin);

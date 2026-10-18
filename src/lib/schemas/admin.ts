@@ -31,3 +31,4 @@ export const restaurantQuery = z.object({ id: uuid });
 export const deleteRestaurant = z.object({ id: uuid, confirm_slug: z.string().min(1).max(60) }).strict();
 export const staffReset = z.object({ id: uuid, user_id: uuid }).strict();
 export const staffEmail = z.object({ id: uuid, user_id: uuid, email: z.string().trim().toLowerCase().email().max(254) }).strict();
+export const staffAdd = z.object({ id: uuid, email: z.string().trim().toLowerCase().email().max(254), name: text(60), role: z.enum(['owner', 'manager', 'waiter', 'kitchen']) }).strict();
