@@ -103,7 +103,10 @@ describe('function privileges', () => {
     const svc = await execBy('service_role');
     expect(svc.filter((n) => n.startsWith('staff_') || n.startsWith('mgr_'))).toEqual([]);
     const auth = await execBy('authenticated');
-    expect(auth.filter((n) => n.startsWith('staff_') || n.startsWith('mgr_')).length).toBe(10);
+    expect(auth.filter((n) => n.startsWith('staff_') || n.startsWith('mgr_')).length).toBe(26);
+    const svcOnly = await execBy('service_role');
+    expect(svcOnly.filter((n) => n.startsWith('owner_')).sort()).toEqual(['owner_add_staff', 'owner_check_staff', 'owner_set_staff']);
+    expect(auth.filter((n) => n.startsWith('owner_'))).toEqual([]);
   });
   it('every SECURITY DEFINER function pins search_path to empty', async () => {
     const rows = await db.admin<{ proname: string; proconfig: string[] | null }>(

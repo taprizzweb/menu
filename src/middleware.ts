@@ -4,7 +4,7 @@ import { newNonce, securityHeaders } from '@/lib/security/csp';
 
 // Edge-safe: only reads NEXT_PUBLIC_* values (inlined at build time). The full env check runs at boot
 // in instrumentation.ts.
-const PROTECTED = /^\/(staff|dash|admin)(\/|$)/;
+const PROTECTED = /^\/(staff|dash|admin|account)(\/|$)/;
 
 export async function middleware(request: NextRequest) {
   const nonce = newNonce();
@@ -42,6 +42,16 @@ export async function middleware(request: NextRequest) {
       },
     });
     const { data } = await supabase.auth.getUser();
+    const path = request.nextUrl.pathname;
+    if (data.user && data.user.app_metadata?.must_change_password === true && !path.startsWith('/account')) {
+      // A temporary password only gets the person as far as choosing their own.
+      const to = request.nextUrl.clone();
+      to.pathname = '/account/password';
+      to.search = '';
+      const redirect = decorate(NextResponse.redirect(to));
+      for (const c of response.cookies.getAll()) redirect.cookies.set(c);
+      return redirect;
+    }
     if (!data.user) {
       const to = request.nextUrl.clone();
       to.pathname = '/login';

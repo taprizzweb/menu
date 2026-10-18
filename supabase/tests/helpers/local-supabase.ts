@@ -12,6 +12,10 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 import type { Pool } from 'pg';
 import { callRpc } from './rpc';
 
+const MAX_UPLOAD_BYTES = 2_097_152;
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const WEAK = /^(password|12345678|qwerty|letmein)/i;
+
 export const LOCAL_JWT_SECRET = 'local-jwt-secret-local-jwt-secret-1234567890';
 export const LOCAL_SERVICE_KEY = 'local-service-role-key-local-service-role';
 export const LOCAL_ANON_KEY = 'local-anon-key-local-anon-key-local';
@@ -34,25 +38,51 @@ export function verifyJwt(token: string): Record<string, any> | null {
   return typeof claims.exp === 'number' && claims.exp > Date.now() / 1000 ? claims : null;
 }
 
-async function readBody(req: IncomingMessage): Promise<any> {
+async function readRaw(req: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const c of req) chunks.push(c as Buffer);
-  const text = Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks);
+}
+async function readBody(req: IncomingMessage): Promise<any> {
+  const text = (await readRaw(req)).toString('utf8');
   return text ? JSON.parse(text) : {};
+}
+
+/** The file part of a multipart/form-data upload (what supabase-js sends for Blobs). */
+function multipartFile(body: Buffer, contentType: string): { data: Buffer; type: string } | null {
+  const boundary = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType);
+  if (!boundary) return null;
+  const sep = Buffer.from(`--${boundary[1] ?? boundary[2]}`);
+  let pos = body.indexOf(sep);
+  let found: { data: Buffer; type: string } | null = null;
+  while (pos !== -1) {
+    const next = body.indexOf(sep, pos + sep.length);
+    if (next === -1) break;
+    const part = body.subarray(pos + sep.length + 2, next - 2); // strip CRLF around the part
+    const split = part.indexOf('\r\n\r\n');
+    if (split !== -1) {
+      const head = part.subarray(0, split).toString('utf8');
+      const type = /content-type:\s*([^\r\n]+)/i.exec(head)?.[1]?.trim();
+      if (type) found = { data: part.subarray(split + 4), type };
+    }
+    pos = next;
+  }
+  return found;
 }
 
 export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?: number } = {}): Promise<Server> {
   const ttl = opts.ttlSeconds ?? 3600;
   const refreshTokens = new Map<string, string>(); // refresh token -> user id
 
-  const userJson = (id: string, email: string) => ({ id, aud: 'authenticated', role: 'authenticated', email, app_metadata: {}, user_metadata: {}, created_at: new Date().toISOString() });
-  const session = (id: string, email: string) => {
+  const userJson = (id: string, email: string, app_metadata: object = {}) => ({ id, aud: 'authenticated', role: 'authenticated', email, app_metadata, user_metadata: {}, created_at: new Date().toISOString() });
+  const files = new Map<string, { data: Buffer; type: string }>();
+  const session = (id: string, email: string, app_metadata: object = {}) => {
     const now = Math.floor(Date.now() / 1000);
     const refresh = randomUUID();
     refreshTokens.set(refresh, id);
     return {
-      access_token: signJwt({ sub: id, email, role: 'authenticated', aud: 'authenticated', aal: 'aal1', iat: now, exp: now + ttl }),
-      token_type: 'bearer', expires_in: ttl, expires_at: now + ttl, refresh_token: refresh, user: userJson(id, email),
+      access_token: signJwt({ sub: id, email, role: 'authenticated', aud: 'authenticated', aal: 'aal1', app_metadata, iat: now, exp: now + ttl }),
+      token_type: 'bearer', expires_in: ttl, expires_at: now + ttl, refresh_token: refresh, user: userJson(id, email, app_metadata),
     };
   };
 
@@ -69,8 +99,8 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
     try {
       if (req.method === 'OPTIONS') {
         res.writeHead(204, {
-          'access-control-allow-origin': origin ?? '*', 'access-control-allow-headers': 'apikey, authorization, content-type, x-client-info, x-supabase-api-version, prefer',
-          'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-max-age': '600',
+          'access-control-allow-origin': origin ?? '*', 'access-control-allow-headers': 'apikey, authorization, content-type, x-client-info, x-supabase-api-version, prefer, x-upsert, cache-control',
+          'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'access-control-max-age': '600',
         });
         res.end();
         return;
@@ -82,24 +112,96 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
         const body = await readBody(req);
         const grant = url.searchParams.get('grant_type');
         if (grant === 'password') {
-          const { rows } = await pool.query<{ id: string; email: string }>(`select id, email from auth.users where email = $1`, [String(body.email ?? '').toLowerCase()]);
+          const { rows } = await pool.query<{ id: string; email: string; password: string | null; app_metadata: object }>(`select id, email, password, app_metadata from auth.users where email = $1`, [String(body.email ?? '').toLowerCase()]);
           const u = rows[0];
-          if (!u || body.password !== DEMO_PASSWORD) return send(res, 400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' }, origin);
-          return send(res, 200, session(u.id, u.email), origin);
+          // seeded demo users have no stored password and use the shared demo password
+          if (!u || body.password !== (u.password ?? DEMO_PASSWORD)) return send(res, 400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' }, origin);
+          return send(res, 200, session(u.id, u.email, u.app_metadata), origin);
         }
         if (grant === 'refresh_token') {
           const id = refreshTokens.get(String(body.refresh_token));
           if (!id) return send(res, 400, { code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token' }, origin);
           refreshTokens.delete(String(body.refresh_token));
-          const { rows } = await pool.query<{ email: string }>(`select email from auth.users where id = $1`, [id]);
-          return send(res, 200, session(id, rows[0]!.email), origin);
+          const { rows } = await pool.query<{ email: string; app_metadata: object }>(`select email, app_metadata from auth.users where id = $1`, [id]);
+          return send(res, 200, session(id, rows[0]!.email, rows[0]!.app_metadata), origin);
         }
         return send(res, 400, { msg: 'unsupported grant' }, origin);
       }
-      if (url.pathname === '/auth/v1/user' && req.method === 'GET') {
+      if (url.pathname === '/auth/v1/user' && (req.method === 'GET' || req.method === 'PUT')) {
         const claims = bearer ? verifyJwt(bearer) : null;
         if (!claims || claims.role !== 'authenticated') return send(res, 401, { code: 401, error_code: 'bad_jwt', msg: 'invalid JWT' }, origin);
-        return send(res, 200, userJson(claims.sub, claims.email), origin);
+        const { rows } = await pool.query<{ email: string; app_metadata: object }>(`select email, app_metadata from auth.users where id = $1`, [claims.sub]);
+        if (!rows[0]) return send(res, 401, { code: 401, error_code: 'user_not_found', msg: 'User not found' }, origin);
+        if (req.method === 'PUT') {
+          const body = await readBody(req);
+          if (typeof body.password === 'string') {
+            if (body.password.length < 12) return send(res, 422, { code: 422, error_code: 'weak_password', msg: 'Password should be at least 12 characters.' }, origin);
+            if (WEAK.test(body.password)) return send(res, 422, { code: 422, error_code: 'weak_password', msg: 'Password is known to be weak and easy to guess' }, origin);
+            await pool.query(`update auth.users set password = $2 where id = $1`, [claims.sub, body.password]);
+          }
+        }
+        return send(res, 200, userJson(claims.sub, rows[0].email, rows[0].app_metadata), origin);
+      }
+      // ---- Auth admin API (service key only)
+      const admin = /^\/auth\/v1\/admin\/users(?:\/([0-9a-f-]{36}))?$/.exec(url.pathname);
+      if (admin) {
+        if (bearer !== LOCAL_SERVICE_KEY) return send(res, 403, { code: 403, error_code: 'not_admin', msg: 'User not allowed' }, origin);
+        const id = admin[1];
+        if (!id && req.method === 'POST') {
+          const b = await readBody(req);
+          const email = String(b.email ?? '').toLowerCase();
+          const dupe = await pool.query(`select 1 from auth.users where email = $1`, [email]);
+          if (dupe.rowCount) return send(res, 422, { code: 422, error_code: 'email_exists', msg: 'A user with this email address has already been registered' }, origin);
+          const r = await pool.query<{ id: string }>(`insert into auth.users (email, password, app_metadata) values ($1,$2,$3) returning id`, [email, b.password ?? null, JSON.stringify(b.app_metadata ?? {})]);
+          return send(res, 200, userJson(r.rows[0]!.id, email, b.app_metadata ?? {}), origin);
+        }
+        if (id && req.method === 'PUT') {
+          const b = await readBody(req);
+          const cur = await pool.query<{ email: string; app_metadata: object }>(`select email, app_metadata from auth.users where id = $1`, [id]);
+          if (!cur.rows[0]) return send(res, 404, { code: 404, error_code: 'user_not_found', msg: 'User not found' }, origin);
+          const meta = { ...cur.rows[0].app_metadata, ...(b.app_metadata ?? {}) };
+          await pool.query(`update auth.users set password = coalesce($2, password), app_metadata = $3 where id = $1`, [id, b.password ?? null, JSON.stringify(meta)]);
+          return send(res, 200, userJson(id, cur.rows[0].email, meta), origin);
+        }
+        if (id && req.method === 'DELETE') {
+          await pool.query(`delete from auth.users where id = $1`, [id]);
+          return send(res, 200, {}, origin);
+        }
+      }
+      // ---- Storage: same access rules as the real bucket (RLS on storage.objects, 2 MB, images only)
+      const up = /^\/storage\/v1\/object\/menu-images\/(.+)$/.exec(url.pathname);
+      if (up && req.method === 'POST') {
+        const claims = bearer ? verifyJwt(bearer) : null;
+        if (!claims) return send(res, 401, { statusCode: '401', error: 'Unauthorized', message: 'invalid JWT' }, origin);
+        const path = decodeURIComponent(up[1]!);
+        const raw = await readRaw(req);
+        const file = multipartFile(raw, String(req.headers['content-type'] ?? '')) ?? { data: raw, type: String(req.headers['content-type'] ?? '') };
+        if (!ALLOWED_TYPES.has(file.type)) return send(res, 415, { statusCode: '415', error: 'invalid_mime_type', message: `mime type ${file.type} is not supported` }, origin);
+        if (file.data.length > MAX_UPLOAD_BYTES) return send(res, 413, { statusCode: '413', error: 'Payload too large', message: 'The object exceeded the maximum allowed size' }, origin);
+        if (files.has(path)) return send(res, 409, { statusCode: '409', error: 'Duplicate', message: 'The resource already exists' }, origin);
+        const c = await pool.connect();
+        try {
+          await c.query('begin');
+          await c.query('set local role authenticated');
+          await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: claims.sub, role: 'authenticated' })]);
+          await c.query(`insert into storage.objects (bucket_id, name, owner) values ('menu-images', $1, $2)`, [path, claims.sub]);
+          await c.query('commit');
+        } catch {
+          await c.query('rollback').catch(() => undefined);
+          return send(res, 403, { statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' }, origin);
+        } finally {
+          c.release();
+        }
+        files.set(path, file);
+        return send(res, 200, { Id: randomUUID(), Key: `menu-images/${path}` }, origin);
+      }
+      const pub = /^\/storage\/v1\/object\/public\/menu-images\/(.+)$/.exec(url.pathname);
+      if (pub && req.method === 'GET') {
+        const f = files.get(decodeURIComponent(pub[1]!));
+        if (!f) return send(res, 404, { statusCode: '404', error: 'not_found', message: 'Object not found' }, origin);
+        res.writeHead(200, { 'content-type': f.type, 'cache-control': 'public, max-age=60', ...(origin ? { 'access-control-allow-origin': origin } : {}), 'cross-origin-resource-policy': 'cross-origin' });
+        res.end(f.data);
+        return;
       }
       if (url.pathname === '/auth/v1/logout' && req.method === 'POST') return send(res, 204, undefined, origin);
 

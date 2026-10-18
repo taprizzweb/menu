@@ -206,3 +206,12 @@ Reply **"go"** (with any answers/changes) and I will start Phase 1.
 - **Staff reads go through three SQL functions** (`staff_me`, `staff_get_board`, `staff_list_items`, migration 0011) instead of direct table reads, and all staff actions go through server routes that call the existing role-checked SQL functions with the signed-in user's token.
 - **Local test stack now emulates Supabase login** (email + password, signed tokens) so the real sign-in flow is tested in a browser. Realtime is not emulated (polling covers it).
 - Bulk availability is capped at 300 dishes per request (fits the 16 KB request limit).
+
+## Changes made while building Phase 4
+- **Dashboard writes all go through role-checked SQL functions** (migration 0013, `mgr_*`); owner-only actions (settings, staff accounts) are enforced in the database as well as the screen. Managers can open every page; they can edit the menu and tables but only view settings and staff.
+- **Staff accounts use temporary passwords** (shown once, never stored by us). `app_metadata.must_change_password` is set by the server only; middleware, the staff API and the dashboard all refuse everything except "choose your own password" until it is cleared.
+- **Photos** are resized in the browser to at most 1600 px and saved as WebP, then uploaded straight to the `menu-images` bucket (folder = restaurant id; the storage policies from 0007 decide who may upload).
+- **CSV import is all-or-nothing**: every row is checked in the browser (preview with row numbers) and again in the database; one bad row means nothing is changed. Export protects text a spreadsheet could run as a formula.
+- **QR codes** are drawn on the server as SVG. Print layouts: A4 sheet (6 per page) and table tents (A4 landscape, two mirrored halves that fold into a tent).
+- **Fix from Phase 3 review:** the guest bill sheet now shows a newly chosen payment method at once instead of after the next refresh.
+- Not yet verifiable here (needs the real Supabase project in Phase 6): Auth rules for passwords (leaked-password check), real Storage policies, Realtime.

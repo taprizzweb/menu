@@ -47,6 +47,8 @@ interface Options<B> {
   method: 'GET' | 'POST';
   schema?: ZodType<B>;
   checkOrigin?: boolean;
+  /** Only the "choose your own password" route sets this: everything else is refused until a temporary password is replaced. */
+  allowTempPassword?: boolean;
 }
 
 /**
@@ -104,6 +106,7 @@ export function staffRoute<B = undefined>(req: Request, opts: Options<B>, run: (
       const db = await userClient();
       const { data, error } = await db.auth.getUser();
       if (error || !data.user) throw new ApiError(401, 'unauthorized');
+      if (!opts.allowTempPassword && data.user.app_metadata?.must_change_password === true) throw new ApiError(403, 'password_change_required');
       return { ...ctx, userId: data.user.id, db };
     },
     run,

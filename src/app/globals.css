@@ -34,3 +34,14 @@ html.staff-large { font-size: 125%; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* ---- printing QR sheets / table tents (A4) ---- */
+@page { size: A4; margin: 10mm; }
+@page tent { size: A4 landscape; margin: 0; }
+@media print {
+  body { background: #fff; }
+  .print-sheet { grid-template-columns: repeat(2, 1fr); }
+  .print-card { height: 88mm; break-inside: avoid; }
+  .print-tent { page: tent; width: 297mm; height: 210mm; break-after: page; }
+  .print-tent:last-child { break-after: auto; }
+}

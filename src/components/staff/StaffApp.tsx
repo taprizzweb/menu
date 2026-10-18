@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiFailure } from '@/lib/guest/client';
 import { errorMessageKey, t } from '@/lib/i18n';
@@ -208,6 +209,9 @@ export function StaffApp({ me, supabase }: { me: StaffMe; supabase: { url: strin
       <Sheet open={menu} onClose={() => setMenu(false)} title="Account" closeLabel="Close">
         <div className="space-y-3">
           <p className="text-stone-800">Signed in as <strong>{me.display_name}</strong> ({ROLE_LABEL[me.role]}).</p>
+          {(me.role === 'owner' || me.role === 'manager') && (
+            <Link href="/dash/menu" prefetch={false} className={`${btnSecondary} min-h-12 w-full`}>Open dashboard</Link>
+          )}
           <button type="button" disabled={signingOut} onClick={() => void signOut('local')} className={`${btnSecondary} min-h-12 w-full`}>Sign out</button>
           <button type="button" disabled={signingOut} onClick={() => void signOut('global')} className={`${btnSecondary} min-h-12 w-full`}>Sign out of all devices</button>
         </div>

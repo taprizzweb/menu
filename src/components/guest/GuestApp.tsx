@@ -31,6 +31,8 @@ export function GuestApp({
   const [orderError, setOrderError] = useState<string | null>(null);
   const [helpBusy, setHelpBusy] = useState(false);
   const [helpError, setHelpError] = useState<string | null>(null);
+  // The bill sheet shows the newly chosen payment mode at once; the server's answer replaces it a moment later.
+  const [payOverride, setPayOverride] = useState<PayMode | null>(null);
   const [online, setOnline] = useState(true);
   const placingRef = useRef(false);
   const autoShown = useRef(false);
@@ -41,7 +43,8 @@ export function GuestApp({
   const closed = status?.state === 'closed';
   const openRequests = status?.state === 'open' ? (status.requests ?? []) : [];
   const waiterReq = openRequests.find((r) => r.type === 'waiter');
-  const billReq = openRequests.find((r) => r.type === 'bill');
+  const serverBillReq = openRequests.find((r) => r.type === 'bill');
+  const billReq = serverBillReq && payOverride ? { ...serverBillReq, pay_mode: payOverride } : serverBillReq;
   const orderCount = status?.state === 'open' ? (status.orders ?? []).filter((o) => o.status !== 'cancelled').length : 0;
 
   const msg = useCallback(
@@ -100,16 +103,22 @@ export function GuestApp({
     }
   };
 
-  const help = async (fn: () => Promise<unknown>) => {
-    if (helpBusy) return;
+  useEffect(() => {
+    if (payOverride && (!serverBillReq || serverBillReq.pay_mode === payOverride)) setPayOverride(null);
+  }, [payOverride, serverBillReq]);
+
+  const help = async (fn: () => Promise<unknown>): Promise<boolean> => {
+    if (helpBusy) return false;
     setHelpBusy(true);
     setHelpError(null);
     try {
       await fn();
       setHasSession(true);
       live.refresh();
+      return true;
     } catch (e) {
       setHelpError(msg(e));
+      return false;
     } finally {
       setHelpBusy(false);
     }
@@ -185,7 +194,11 @@ export function GuestApp({
 
       <CartSheet open={sheet === 'cart'} onClose={() => setSheet(null)} t={t} cart={cart} items={items} placing={placing} error={orderError} adjusted={cart.adjusted} onPlace={place} />
       <WaiterSheet open={sheet === 'waiter'} onClose={() => setSheet(null)} t={t} openRequest={waiterReq} busy={helpBusy} error={helpError} onPick={(r: WaiterReason) => token && void help(() => callWaiter(slug, token, r))} />
-      <BillSheet open={sheet === 'bill'} onClose={() => setSheet(null)} t={t} openRequest={billReq} busy={helpBusy} error={helpError} onPick={(m: PayMode) => token && void help(() => askBill(slug, token, m))} />
+      <BillSheet open={sheet === 'bill'} onClose={() => setSheet(null)} t={t} openRequest={billReq} busy={helpBusy} error={helpError} onPick={(m: PayMode) => {
+        if (!token) return;
+        setPayOverride(m);
+        void help(() => askBill(slug, token, m)).then((ok) => { if (!ok) setPayOverride(null); });
+      }} />
 
       <footer className="mx-auto max-w-2xl px-4 pb-4 pt-8 text-center text-xs text-stone-600">
         <Link href="/privacy" className="inline-flex min-h-11 min-w-11 items-center justify-center px-3 underline underline-offset-2">{t('app.privacy')}</Link> · {t('app.poweredBy')}

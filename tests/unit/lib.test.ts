@@ -46,7 +46,7 @@ describe('user-facing text', () => {
     expect(t('app.table')).toBe('Table {label}');
   });
   it('every API error key the server can return has a message', () => {
-    const keys = [...Object.values(SQL_ERRORS).map((e) => e.key), 'origin_not_allowed', 'unsupported_media_type', 'payload_too_large', 'unauthorized', 'invalid_credentials', 'method_not_allowed', 'server_error'];
+    const keys = [...Object.values(SQL_ERRORS).map((e) => e.key), 'origin_not_allowed', 'unsupported_media_type', 'payload_too_large', 'unauthorized', 'password_change_required', 'invalid_credentials', 'method_not_allowed', 'server_error'];
     for (const k of keys) {
       const mk = errorMessageKey(k);
       expect(mk, k).toBe(`error.${k}`);

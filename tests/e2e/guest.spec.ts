@@ -86,7 +86,7 @@ test.describe('guest journey', () => {
     await expect(dialog(page)).toContainText('Paying by UPI');
     await dialog(page).getByRole('button', { name: 'Change payment method' }).click();
     await dialog(page).getByRole('button', { name: 'Card' }).click();
-    await expect(dialog(page)).toContainText('Paying by Card');
+    await expect(dialog(page)).toContainText('Paying by Card', { timeout: 1500 }); // shown at once, not after the next 4-5 s refresh
     await page.screenshot({ path: `${SHOTS}/${info.project.name}-6-bill.png` });
     await closeSheet(page);
     const bill = await q<{ pay_mode: string; n: number }>(`select pay_mode, count(*) over ()::int n from public.service_requests where table_id = $1 and type = 'bill' and status = 'open'`, [t.id]);
@@ -304,6 +304,8 @@ test.describe('security on the real server', () => {
 
 test.describe('accessibility (axe, WCAG 2 A/AA)', () => {
   const scan = async (page: Page, label: string) => {
+    // Sheets fade in over 220 ms; scanning mid-fade measures colours against the dimmed backdrop and reports false contrast failures.
+    await page.waitForTimeout(400);
     const r = await new AxeBuilder({ page: page as unknown as AxePage }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     const summary = r.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
     expect(summary, `${label}: ${summary.join('\n')}`).toEqual([]);

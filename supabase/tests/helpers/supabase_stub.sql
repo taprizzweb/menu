@@ -14,6 +14,9 @@ create table if not exists auth.users (
   email text unique,
   created_at timestamptz not null default now()
 );
+-- test-only extras so the local stand-in can store passwords and server-only metadata
+alter table auth.users add column if not exists password text;
+alter table auth.users add column if not exists app_metadata jsonb not null default '{}'::jsonb;
 -- Same lookup order as Supabase: claims JSON, falling back to the legacy per-claim setting.
 create or replace function auth.uid() returns uuid language sql stable as $$
   select coalesce(

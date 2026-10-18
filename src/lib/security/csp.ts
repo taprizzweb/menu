@@ -37,6 +37,8 @@ export function buildCsp({ nonce, dev, supabaseUrl, sentryOrigin, secure = true 
     'frame-ancestors': ["'none'"],
     'form-action': ["'self'"],
   };
+  // Local plain-http testing only: menu photos come from the local storage stand-in over http.
+  if (dev || !secure) directives['img-src']!.push(`http://${supabase.host}`);
   const parts = Object.entries(directives).map(([k, v]) => `${k} ${v.join(' ')}`);
   if (!dev && secure) parts.push('upgrade-insecure-requests');
   return parts.join('; ');

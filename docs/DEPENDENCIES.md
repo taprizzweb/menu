@@ -10,6 +10,7 @@ in six months use the same code. Nothing is added without being listed here.
 | `react`, `react-dom` 19.1.x | Required by Next.js. |
 | `@supabase/supabase-js` | Talks to the Supabase database/Auth/Realtime/Storage. |
 | `@supabase/ssr` | Keeps staff login sessions in cookies, read on the server (`getUser()`), refreshed in middleware, and used by the browser for the Realtime connection. |
+| `qrcode` 1.5.4 (+ `@types/qrcode`) | Draws each table's QR code as an SVG on the server (nothing is sent to the browser to generate it). Small, widely used, no network access. |
 | `zod` 3.x | Validates all incoming data (API inputs, environment variables). Version 3 chosen for maturity. |
 | `server-only` | Makes the build fail if server-only code (e.g. the service-role key) is imported into browser code. |
 
