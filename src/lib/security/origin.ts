@@ -5,12 +5,23 @@
  */
 export function isAllowedOrigin(headers: Headers, appOrigin: string): boolean {
   const allowed = new URL(appOrigin).origin;
+  // The page's own address counts too (same-origin check), so the site works on every address it is served from,
+  // e.g. the vercel.app address and the custom domain, without a mismatch lockout.
+  const host = headers.get('host');
+  const sameHost = (o: string): boolean => {
+    try {
+      const u = new URL(o);
+      return o === allowed || (host !== null && u.host === host && (u.protocol === 'https:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1'));
+    } catch {
+      return false;
+    }
+  };
   const origin = headers.get('origin');
-  if (origin) return origin === allowed;
+  if (origin) return sameHost(origin);
   const referer = headers.get('referer');
   if (referer) {
     try {
-      return new URL(referer).origin === allowed;
+      return sameHost(new URL(referer).origin);
     } catch {
       return false;
     }
