@@ -71,6 +71,7 @@ async function guarded<B, C extends Ctx>(
     const env = serverEnv();
     if (req.method !== opts.method) throw new ApiError(405, 'method_not_allowed');
     if ((opts.method === 'POST' || opts.checkOrigin) && !isAllowedOrigin(req.headers, env.NEXT_PUBLIC_APP_ORIGIN)) {
+      log('warn', 'origin refused', { origin: req.headers.get('origin'), host: req.headers.get('host'), forwardedHost: req.headers.get('x-forwarded-host'), referer: req.headers.get('referer')?.slice(0, 80) ?? null, configured: env.NEXT_PUBLIC_APP_ORIGIN });
       throw new ApiError(403, 'origin_not_allowed');
     }
     let body = undefined as B;
