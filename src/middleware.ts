@@ -1,6 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { aalFromToken } from '@/lib/auth/aal';
 import { newNonce, securityHeaders } from '@/lib/security/csp';
 
 // Edge-safe: only reads NEXT_PUBLIC_* values (inlined at build time). The full env check runs at boot
@@ -53,18 +52,6 @@ export async function middleware(request: NextRequest) {
       const redirect = decorate(NextResponse.redirect(to));
       for (const c of response.cookies.getAll()) redirect.cookies.set(c);
       return redirect;
-    }
-    if (data.user && /^\/admin(\/|$)/.test(path)) {
-      // /admin always needs the second factor (platform admins only). Restaurant staff, owners and managers use email + password.
-      const { data: sess } = await supabase.auth.getSession();
-      if (aalFromToken(sess.session?.access_token) !== 'aal2') {
-        const to = request.nextUrl.clone();
-        to.pathname = '/account/mfa';
-        to.search = `?next=${encodeURIComponent(path)}`;
-        const redirect = decorate(NextResponse.redirect(to));
-        for (const c of response.cookies.getAll()) redirect.cookies.set(c);
-        return redirect;
-      }
     }
     if (!data.user) {
       const to = request.nextUrl.clone();
