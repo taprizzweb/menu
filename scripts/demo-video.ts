@@ -7,6 +7,7 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { chromium, type Locator, type Page } from '@playwright/test';
+import { DEMO_TOTP_SECRET, totp } from '../supabase/tests/helpers/totp';
 
 const INFO = '/tmp/gotomenu-demo-stack.json';
 const PORT = process.env.E2E_PORT ?? '3100';
@@ -31,6 +32,7 @@ const waitFor = async (ok: () => Promise<boolean>, what: string) => {
 
 async function main() {
   if (process.argv[2] === 'record') return record();
+  if (process.argv[2] === 'compose') return compose(); // re-render captions from the saved recordings
   rmSync(INFO, { force: true });
   let code = 1;
   try {
@@ -50,12 +52,24 @@ async function main() {
 }
 
 // ---------------------------------------------------------------- on-screen helpers (visible cursor, click ripple)
-const overlay = () => `(() => {
+const overlay = (t0: number) => `(() => {
   const css = \`
   #__cur{position:fixed;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:rgba(239,68,68,.5);border:3px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.4);z-index:2147483647;pointer-events:none;transition:transform .12s linear;opacity:0}
   .__rip{position:fixed;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:5px solid rgba(239,68,68,.95);z-index:2147483646;pointer-events:none;animation:__rip .7s ease-out forwards}
   @keyframes __rip{to{transform:scale(3.4);opacity:0}}\`;
+  const T0 = ${t0};
+  const clock = () => {
+    // 11 black/white squares in the top-left corner encode elapsed half-seconds; compose() reads them back from the
+    // recording to line the captions up with what is really on screen, then crops the strip away.
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;left:0;top:0;width:110px;height:10px;z-index:2147483647;display:flex;pointer-events:none;background:#000';
+    const cells = Array.from({ length: 11 }, () => { const c = document.createElement('div'); c.style.cssText = 'width:10px;height:10px'; bar.appendChild(c); return c; });
+    document.documentElement.appendChild(bar);
+    const tick = () => { const v = Math.floor((Date.now() - T0) / 500); cells.forEach((c, i) => { c.style.background = (v >> (10 - i)) & 1 ? '#fff' : '#000'; }); };
+    tick(); setInterval(tick, 100);
+  };
   const init = () => {
+    clock();
     if (document.getElementById('__cur')) return;
     const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
     const cur = document.createElement('div'); cur.id = '__cur'; document.body.appendChild(cur);
@@ -96,6 +110,7 @@ const card = (html: string) => `<!doctype html><meta name=viewport content="widt
 async function record() {
   const info = JSON.parse(readFileSync(process.env.DEV_STACK_INFO ?? INFO, 'utf8')) as { db: string; seeded: { restaurants: { slug: string; tables: { label: string; token: string }[] }[] } };
   const table = info.seeded.restaurants.find((r) => r.slug === 'spice-garden')!.tables[6]!; // "Table 7"
+  const aromaTable = info.seeded.restaurants.find((r) => r.slug === 'cafe-aroma')!.tables[0]!;
   const { Pool } = await import('pg');
   const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgres://gm_test:gm_test@127.0.0.1:5432/postgres');
   url.pathname = `/${info.db}`;
@@ -110,11 +125,12 @@ async function record() {
   const staffCtx = await browser.newContext({ viewport: { width: 1280, height: 880 }, bypassCSP: true, hasTouch: true, recordVideo: { dir: `${OUT}/raw/staff`, size: { width: 1280, height: 880 } } });
   const guestCtx = await browser.newContext({ // A roomy phone-shaped screen: the recording is captured at CSS-pixel size, so a bigger screen is what makes it sharp.
     viewport: { width: 480, height: 1040 }, isMobile: true, hasTouch: true, bypassCSP: true, recordVideo: { dir: `${OUT}/raw/guest`, size: { width: 480, height: 1040 } } });
-  await staffCtx.addInitScript(overlay());
-  await guestCtx.addInitScript(overlay());
+  const T0 = Date.now();
+  await staffCtx.addInitScript(overlay(T0));
+  await guestCtx.addInitScript(overlay(T0));
   const staff = await staffCtx.newPage();
   const guest = await guestCtx.newPage();
-  videoZero = Date.now();
+  videoZero = T0;
 
   // wait helpers
   const orderCard = () => staff.locator('li[data-testid^="order-"]', { hasText: 'Table 7' }).first();
@@ -329,12 +345,185 @@ async function record() {
     await sleep(4500);
     await tap(staff, staff.getByRole('button', { name: 'Larger text' }), 800);
 
-    // ---------------------------------------------------------------- 12. end card
-    say('That is everything working today. Next: the owner dashboard and the platform admin panel.');
-    await staff.setContent(card(`<div style="max-width:980px"><h1 style="font-size:44px;margin:0 0 24px">What you just saw is built and tested</h1>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;text-align:left;font-size:19px;line-height:1.5">
-        <div style="background:#052e1b;border:2px solid #10b981;border-radius:16px;padding:20px"><b style="color:#6ee7b7;font-size:14px;letter-spacing:.12em">WORKING TODAY</b><br>✓ Guest menu, cart, order, live status<br>✓ Call waiter, ask for bill (cash / UPI / card)<br>✓ Thank-you and Google review button<br>✓ Staff sign-in, live board, alert sounds<br>✓ Accept / ready / served / cancel with reason<br>✓ Bill alerts: what to bring to the table<br>✓ Mark paid, force close, sold-out switches<br>✓ Roles: owner, manager, waiter, kitchen<br>✓ Tablet install, larger text, offline page</div>
-        <div style="background:#1e1b4b;border:2px solid #818cf8;border-radius:16px;padding:20px"><b style="color:#c7d2fe;font-size:14px;letter-spacing:.12em">COMING NEXT (NOT BUILT YET)</b><br><b>Phase 4 · Owner dashboard</b><br>Menu manager, photos, CSV import, tables and printable QR sheets, staff accounts, restaurant settings, reports, audit log<br><br><b>Phase 5 · Platform admin</b><br>Create restaurants, plans and paid-until dates, suspend or activate, two-factor login</div></div></div>`));
+    // ---------------------------------------------------------------- 12. owner dashboard
+    const onCode = async (secret: string) => {
+      await staff.getByLabel('6-digit code').waitFor();
+      await typeInto(staff, staff.getByLabel('6-digit code'), totp(secret));
+      await tap(staff, staff.getByRole('button', { name: 'Confirm' }), 1500);
+    };
+    const signInStaff = async (mail: string, pass: string) => {
+      await staff.goto(`${BASE}/login`);
+      await typeInto(staff, staff.getByLabel('Email'), mail);
+      await typeInto(staff, staff.getByLabel('Password'), pass);
+      await tap(staff, staff.getByRole('button', { name: 'Sign in' }), 1200);
+    };
+    say('OWNER - Now the restaurant owner. Signing out of the kitchen account and signing in as the OWNER.');
+    await tap(staff, staff.getByRole('button', { name: 'Account' }), 800);
+    await tap(staff, dlg(staff).getByRole('button', { name: 'Sign out', exact: true }), 1500);
+    await signInStaff('owner@spice-garden.demo', PASSWORD);
+    say('OWNER - Owners, managers and the platform admin must also type a 6-digit code from an authenticator app. A stolen password alone is useless.');
+    await sleep(3500);
+    await onCode(DEMO_TOTP_SECRET);
+    await staff.getByRole('heading', { level: 1 }).waitFor();
+    await tap(staff, staff.getByRole('button', { name: 'Account' }), 800);
+    await tap(staff, dlg(staff).getByRole('link', { name: 'Open dashboard' }), 1800);
+    await staff.getByRole('heading', { level: 1, name: 'Menu' }).waitFor();
+    say('OWNER DASHBOARD - Menu manager: categories, dishes, photos, prices, veg / non-veg / egg / Jain, spice, badges, availability.');
+    await sleep(4500);
+    say('OWNER - Adding a new dish: Cold Coffee, Rs 120, Beverages, Bestseller badge.');
+    await tap(staff, staff.getByRole('button', { name: 'Add dish' }).first(), 900);
+    await typeInto(staff, dlg(staff).getByLabel('Dish name'), 'Cold Coffee');
+    await dlg(staff).getByLabel('Category').selectOption({ label: 'Beverages' });
+    await typeInto(staff, dlg(staff).getByLabel('Price (₹)'), '120');
+    await tap(staff, dlg(staff).getByLabel('Bestseller badge'), 600);
+    await sleep(1200);
+    await tap(staff, dlg(staff).getByRole('button', { name: 'Save dish' }), 1500);
+    await staff.getByText('Cold Coffee', { exact: true }).first().waitFor();
+    say('GUEST - The guest\'s menu already shows the new dish after a refresh.');
+    await guest.goto(`${BASE}/spice-garden?k=${table.token}`);
+    await guest.getByRole('heading', { level: 1 }).waitFor();
+    await tap(guest, guest.getByRole('button', { name: 'Back to menu' }), 600).catch(() => undefined);
+    await tap(guest, guestChip('Beverages'), 1200);
+    await scrollTo(guest, guest.getByRole('heading', { name: 'Cold Coffee', level: 3 }));
+    await sleep(3500);
+    say('OWNER - Out of coffee? One switch marks it sold out. The guest cannot order it.');
+    await tap(staff, staff.locator('li', { has: staff.getByText('Cold Coffee', { exact: true }) }).getByRole('switch'), 1500);
+    await guest.reload();
+    await guest.getByRole('heading', { level: 1 }).waitFor();
+    await tap(guest, guest.getByRole('button', { name: 'Back to menu' }), 600).catch(() => undefined);
+    await tap(guest, guestChip('Beverages'), 1200);
+    await scrollTo(guest, guest.getByRole('heading', { name: 'Cold Coffee', level: 3 }));
+    await sleep(3000);
+    say('OWNER - Bulk tools: select many dishes to change prices by a percentage or mark them sold out; drag or use arrows to reorder.');
+    await staff.getByLabel('Select Cold Coffee').check();
+    await sleep(1200);
+    await tap(staff, staff.getByRole('button', { name: 'Change prices' }), 900);
+    await typeInto(staff, dlg(staff).getByRole('textbox', { name: 'Percent' }), '10');
+    await sleep(1500);
+    await tap(staff, dlg(staff).getByRole('button', { name: /Apply to 1 dishes/ }), 1800);
+    say('OWNER - Import a whole menu from Excel / Google Sheets as CSV. Every row is checked first, with row numbers; nothing changes unless all rows are right.');
+    await tap(staff, staff.getByRole('button', { name: 'Import CSV' }), 900);
+    const csv = 'category,name,description,price,diet,spice,bestseller,chef_pick,available\r\nBeverages,Mango Shake,Fresh mango,150,veg,0,no,no,yes\r\nBeverages,Broken Row,Oops,abc,veg,0,no,no,yes\r\n';
+    await dlg(staff).getByLabel('Choose your CSV file').setInputFiles({ name: 'menu.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+    await sleep(5500);
+    await tap(staff, dlg(staff).getByRole('button', { name: 'Close' }).first(), 800);
+
+    say('OWNER - Tables & QR: create tables 1 to N, switch off or rename, and make a new QR if one is leaked (the old code dies at once).');
+    await tap(staff, staff.getByRole('link', { name: 'Tables & QR' }), 1800);
+    await staff.getByRole('heading', { level: 1 }).waitFor();
+    await sleep(4500);
+    say('OWNER - Print-ready A4 table tents with the restaurant name and "Scan to order". The QR is drawn on the server.');
+    await staff.goto(`${BASE}/dash/print?layout=tent`);
+    await staff.getByText('Scan to order').first().waitFor();
+    await sleep(5500);
+    await staff.goto(`${BASE}/dash/print?layout=sheet`);
+    await sleep(4500);
+
+    say('OWNER - Staff accounts: add a waiter. A temporary password is shown once and must be changed at first sign-in. Only the owner can do this.');
+    await staff.goto(`${BASE}/dash/staff`);
+    await staff.getByRole('button', { name: 'Add staff member' }).waitFor();
+    await sleep(2500);
+    await tap(staff, staff.getByRole('button', { name: 'Add staff member' }), 800);
+    await typeInto(staff, dlg(staff).getByLabel('Name'), 'Ravi');
+    await typeInto(staff, dlg(staff).getByLabel(/Email/), 'ravi@spice-garden.demo');
+    await tap(staff, dlg(staff).getByRole('button', { name: 'Create account' }), 1500);
+    await sleep(4500);
+    await tap(staff, dlg(staff).getByRole('button', { name: 'I have saved it' }), 900);
+    await sleep(1500);
+
+    say('OWNER - Settings: restaurant name, Google review link, accent colour and how long before an order turns amber or red.');
+    await staff.goto(`${BASE}/dash/settings`);
+    await staff.getByLabel('Restaurant name').waitFor();
+    await sleep(2500);
+    await tap(staff, staff.getByText('indigo', { exact: true }), 900);
+    await tap(staff, staff.getByRole('button', { name: 'Save settings' }), 1500);
+    say('GUEST - The guest menu now wears the restaurant\'s new colour.');
+    await guest.reload();
+    await guest.getByRole('heading', { level: 1 }).waitFor();
+    await tap(guest, guest.getByRole('button', { name: 'Back to menu' }), 600).catch(() => undefined);
+    await sleep(4000);
+    await staff.getByText('saffron', { exact: true }).click();
+    await tap(staff, staff.getByRole('button', { name: 'Save settings' }), 800);
+
+    say('OWNER - Report: orders, average order value, top 10 dishes, busiest hours and review-button taps for today, 7 or 30 days.');
+    await staff.goto(`${BASE}/dash/report`);
+    await staff.getByRole('heading', { name: 'Top 10 dishes' }).waitFor();
+    await sleep(3500);
+    await tap(staff, staff.getByRole('button', { name: 'Last 7 days' }), 3500);
+    say('OWNER - Activity log: who changed what, newest first. It cannot be edited or deleted by anyone.');
+    await staff.goto(`${BASE}/dash/audit`);
+    await staff.getByRole('heading', { name: 'Activity log' }).waitFor();
+    await sleep(6000);
+    await tap(staff, staff.getByRole('button', { name: 'Sign out' }), 1500);
+
+    // ---------------------------------------------------------------- 13. platform admin
+    await staff.getByLabel('Email').waitFor();
+    say('PLATFORM ADMIN - This is the app owner\'s private panel. It always needs the authenticator code too.');
+    await signInStaff('admin@gotomenu.demo', PASSWORD);
+    await sleep(2500);
+    await onCode(DEMO_TOTP_SECRET);
+    await staff.getByRole('heading', { level: 1, name: 'Restaurants' }).waitFor();
+    say('ADMIN - Every restaurant with its plan, paid-until date, last order and total orders.');
+    await sleep(5000);
+    say('ADMIN - Creating a new restaurant and its owner login: Chai Point.');
+    await tap(staff, staff.getByRole('button', { name: 'Create restaurant' }), 900);
+    await typeInto(staff, dlg(staff).getByLabel('Restaurant name'), 'Chai Point');
+    await typeInto(staff, dlg(staff).getByLabel('Web address (after the domain)'), 'chai-point');
+    await typeInto(staff, dlg(staff).getByLabel('Owner name'), 'Meera');
+    await typeInto(staff, dlg(staff).getByLabel('Owner email'), 'owner@chai-point.demo');
+    await tap(staff, dlg(staff).getByRole('button', { name: 'Create restaurant and owner login' }), 1500);
+    const temp = ((await dlg(staff).getByTestId('temp-password').textContent()) ?? '').trim();
+    say('ADMIN - The owner gets a one-time temporary password. It is shown once and never stored.');
+    await sleep(5500);
+    await tap(staff, dlg(staff).getByRole('button', { name: 'I have saved it' }), 900);
+
+    say('ADMIN - Suspending a restaurant (for example, an unpaid month) blocks guest ordering and staff changes immediately.');
+    const aroma = staff.getByTestId('restaurant-cafe-aroma');
+    await tap(staff, aroma.getByRole('button', { name: /^Suspend/ }), 1500);
+    await guest.goto(`${BASE}/cafe-aroma?k=${aromaTable.token}`);
+    await guest.getByText('Ordering is paused').waitFor();
+    say('GUEST - A guest at the suspended restaurant sees a friendly "Ordering is paused" message.');
+    await sleep(4500);
+    await tap(staff, aroma.getByRole('button', { name: /^Activate/ }), 1500);
+    say('ADMIN - Plan and paid-until date, per-restaurant activity log, data export and permanent delete (type the address to confirm).');
+    await tap(staff, aroma.getByRole('button', { name: /Plan and payment for/ }), 900);
+    await sleep(3500);
+    await tap(staff, dlg(staff).getByRole('button', { name: 'Close' }).first(), 700);
+    await tap(staff, aroma.getByRole('button', { name: /Activity log for/ }), 900);
+    await sleep(4000);
+    await tap(staff, dlg(staff).getByRole('button', { name: 'Close' }).first(), 700);
+    await tap(staff, staff.getByRole('button', { name: 'Sign out' }), 1500);
+
+    // ---------------------------------------------------------------- 14. the new owner's first sign-in
+    await staff.getByLabel('Email').waitFor();
+    say('NEW OWNER - Meera signs in for the first time with the temporary password...');
+    await signInStaff('owner@chai-point.demo', temp);
+    await staff.getByRole('heading', { name: 'Choose your password' }).waitFor();
+    say('NEW OWNER - ...and cannot do anything until she chooses her own password.');
+    await sleep(3000);
+    const newPass = 'Chai-Point-Owner-2025!';
+    await typeInto(staff, staff.getByLabel('New password', { exact: true }), newPass);
+    await typeInto(staff, staff.getByLabel('Type it again'), newPass);
+    await tap(staff, staff.getByRole('button', { name: 'Save password' }), 1500);
+    await staff.getByRole('heading', { name: 'Two-step sign-in' }).waitFor();
+    say('NEW OWNER - Next she must set up an authenticator app: scan the QR picture (or type the key) and enter the 6-digit code.');
+    await tap(staff, staff.getByRole('button', { name: 'Set up authenticator app' }), 1500);
+    const secret = ((await staff.getByTestId('mfa-secret').textContent()) ?? '').trim();
+    await sleep(5000);
+    await onCode(secret);
+    await staff.getByRole('heading', { level: 1 }).waitFor();
+    say('NEW OWNER - She is in. Her new restaurant is empty, ready for her menu.');
+    await tap(staff, staff.getByRole('button', { name: 'Account' }), 800);
+    await tap(staff, dlg(staff).getByRole('link', { name: 'Open dashboard' }), 1800);
+    await staff.getByText('Your menu is empty').waitFor();
+    await sleep(5000);
+
+    // ---------------------------------------------------------------- 15. end card
+    say('That is everything built so far: guest ordering, staff screen, owner dashboard and platform admin.');
+    await staff.setContent(card(`<div style="max-width:1000px"><h1 style="font-size:42px;margin:0 0 22px">Built and tested</h1>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;text-align:left;font-size:18px;line-height:1.5">
+        <div style="background:#052e1b;border:2px solid #10b981;border-radius:16px;padding:20px"><b style="color:#6ee7b7;font-size:14px;letter-spacing:.12em">DONE (PHASES 1 TO 5)</b><br>✓ Guest menu, cart, order, live status, bill, review<br>✓ Staff live board, alert sounds, roles, sold-out<br>✓ Owner dashboard: menu, photos, CSV, tables and QR print<br>✓ Staff accounts, settings, report, activity log<br>✓ Platform admin: restaurants, plans, suspend, export, delete<br>✓ Two-step sign-in for owners, managers and admin<br>✓ Security tests, threat model, audit log</div>
+        <div style="background:#1e1b4b;border:2px solid #818cf8;border-radius:16px;padding:20px"><b style="color:#c7d2fe;font-size:14px;letter-spacing:.12em">NEXT: PHASE 6 AND LAUNCH</b><br>Staging on the real Supabase and Vercel<br>Load test with 300 guests, speed budget<br>Backups and restore test<br>Runbook and deployment guide<br>Your approval, then production at gotomenu.taprizz.in<br><br><b>Later (only if you ask):</b> payments, GST bills, WhatsApp, ratings</div></div></div>`));
     await guest.setContent(card(`<div><h2 style="font-size:28px;margin:0 0 8px">Thank you</h2><p style="color:#cbd5e1">Scan. Order. Enjoy.</p></div>`));
     await sleep(9000);
   } finally {
@@ -352,16 +541,44 @@ async function record() {
 }
 
 // ---------------------------------------------------------------- compose: two screens + captions band -> one mp4
+/** Decodes the in-page clock strip from the recording: for every half second of video, which script time the screen shows. */
+function readClock(videoFile: string): { video: number; page: number }[] {
+  const r = spawnSync('ffmpeg', ['-v', 'error', '-i', videoFile, '-vf', 'fps=2,crop=110:10:0:0,format=gray', '-f', 'rawvideo', '-'], { maxBuffer: 1 << 28 });
+  const buf = r.stdout;
+  const out: { video: number; page: number }[] = [];
+  let last = -1;
+  for (let f = 0; f * 1100 < buf.length; f++) {
+    let v = 0;
+    for (let i = 0; i < 11; i++) v = (v << 1) | (buf[f * 1100 + 5 * 110 + 10 * i + 5]! > 128 ? 1 : 0);
+    const page = v / 2;
+    if (page > last && (last < 0 || page - last < 30)) { out.push({ video: f / 2, page }); last = page; } // ignore frames without a readable clock
+  }
+  return out;
+}
+
+/** Breaks a long caption into at most two lines so it never runs off the screen. */
+function wrap(text: string, width = 78): string {
+  if (text.length <= width) return text;
+  const cut = text.lastIndexOf(' ', Math.min(width, Math.ceil(text.length / 2) + 12));
+  return `${text.slice(0, cut)}\n${text.slice(cut + 1)}`;
+}
+
 function compose() {
   const { cues: list, staff, guest } = JSON.parse(readFileSync(`${OUT}/cues.json`, 'utf8')) as { cues: { t: number; text: string }[]; staff: string; guest: string };
   const dur = (f: string) => Number(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f], { encoding: 'utf8' }).stdout.trim());
   const total = Math.min(dur(staff), dur(guest));
   const font = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
   const fontOpt = existsSync(font) ? `fontfile=${font}:` : '';
+  const clockMap = readClock(staff);
+  const toVideo = (t: number): number => {
+    // first moment the recording shows a page clock at or after t (the screen can only be behind the script, never ahead)
+    const hit = clockMap.find((m) => m.page >= t);
+    return hit ? hit.video : t;
+  };
   const filters: string[] = [
     'color=c=0x0f172a:s=1920x1080[bg]',
-    '[0:v]scale=-2:880,setsar=1[s]',
-    '[1:v]scale=-2:880,setsar=1[g]',
+    '[0:v]crop=iw:ih-10:0:10,scale=-2:880,setsar=1[s]',
+    '[1:v]crop=iw:ih-10:0:10,scale=-2:880,setsar=1[g]',
     '[bg][s]overlay=70:110:shortest=1[t1]',
     '[t1][g]overlay=1444:110:shortest=1[t2]',
   ];
@@ -371,13 +588,14 @@ function compose() {
     chain = `[${label}]`;
   };
   draw('h1', `text='GoToMenu  |  live demo':fontsize=40:fontcolor=white:x=70:y=30`);
-  draw('h2', `text='RESTAURANT STAFF TABLET':fontsize=22:fontcolor=0xfbbf24:x=70:y=78`);
+  draw('h2', `text='RESTAURANT STAFF / OWNER / ADMIN SCREEN':fontsize=22:fontcolor=0xfbbf24:x=70:y=78`);
   draw('h3', `text='GUEST PHONE':fontsize=22:fontcolor=0xfbbf24:x=1444:y=78`);
   list.forEach((c, i) => {
-    const end = Math.min(list[i + 1]?.t ?? total, total);
-    if (c.t >= total) return;
-    writeFileSync(`${OUT}/cue-${i}.txt`, c.text);
-    draw(`c${i}`, `textfile=${OUT}/cue-${i}.txt:fontsize=30:fontcolor=white:box=1:boxcolor=0x1e293b@0.95:boxborderw=14:x=(w-text_w)/2:y=1008:enable='between(t,${(c.t + 0.1).toFixed(2)},${end.toFixed(2)})'`);
+    const startV = toVideo(c.t);
+    const end = Math.min(list[i + 1] ? toVideo(list[i + 1]!.t) : total, total);
+    if (startV >= total) return;
+    writeFileSync(`${OUT}/cue-${i}.txt`, wrap(c.text));
+    draw(`c${i}`, `textfile=${OUT}/cue-${i}.txt:fontsize=30:fontcolor=white:box=1:boxcolor=0x1e293b@0.95:boxborderw=14:line_spacing=6:x=(w-text_w)/2:y=${c.text.length > 78 ? 972 : 1008}:enable='between(t,${(startV + 0.1).toFixed(2)},${end.toFixed(2)})'`);
   });
   writeFileSync(`${OUT}/filter.txt`, filters.join(';\n').replace(`${chain}`, chain) );
   const r = spawnSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', staff, '-i', guest, '-filter_complex_script', `${OUT}/filter.txt`, '-map', chain, '-t', String(total), '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', `${OUT}/GoToMenu-demo.mp4`], { stdio: 'inherit' });
