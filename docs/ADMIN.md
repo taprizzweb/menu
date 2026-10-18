@@ -17,6 +17,9 @@ Nobody is asked for an authenticator code (owner decision). `/admin` still shows
 ## What you can do in /admin
 Create a restaurant and its owner login (a temporary password is shown once), set plan and paid-until date, suspend / activate (a suspended restaurant cannot take orders and its staff cannot change anything), see last order time and total orders, read any restaurant's activity log, download all of a restaurant's data as JSON, and permanently delete a restaurant (you must type its address exactly; its staff logins and photos are removed too).
 
+## Owner forgot the password, or the email is wrong
+In `/admin` open the restaurant and tap **Logins**. Each person shows their email. **Reset password** gives a new temporary password (shown once; they must choose their own at the next sign-in). **Change email** corrects the address (the old one stops working; the password stays). Both are written to the restaurant's activity log. Never delete users in the Supabase dashboard: that also removes their restaurant link.
+
 ## Supabase settings to switch on (staging first, then production)
 In **Authentication → Providers → Email**: minimum password length **12**; on a paid plan also switch on **Prevent use of leaked passwords**. In **Authentication → Multi-Factor**: make sure **TOTP** is enabled. Session length ("time-box") is a paid-plan setting; the default access token lasts one hour and is refreshed automatically.
 

@@ -202,13 +202,22 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
           const r = await pool.query<{ id: string }>(`insert into auth.users (email, password, app_metadata) values ($1,$2,$3) returning id`, [email, b.password ?? null, JSON.stringify(b.app_metadata ?? {})]);
           return send(res, 200, await userJson(r.rows[0]!.id, email, b.app_metadata ?? {}), origin);
         }
+        if (id && req.method === 'GET') {
+          const cur = await pool.query<{ email: string; app_metadata: object }>(`select email, app_metadata from auth.users where id = $1`, [id]);
+          if (!cur.rows[0]) return send(res, 404, { code: 404, error_code: 'user_not_found', msg: 'User not found' }, origin);
+          return send(res, 200, await userJson(id, cur.rows[0].email, cur.rows[0].app_metadata), origin);
+        }
         if (id && req.method === 'PUT') {
           const b = await readBody(req);
           const cur = await pool.query<{ email: string; app_metadata: object }>(`select email, app_metadata from auth.users where id = $1`, [id]);
           if (!cur.rows[0]) return send(res, 404, { code: 404, error_code: 'user_not_found', msg: 'User not found' }, origin);
           const meta = { ...cur.rows[0].app_metadata, ...(b.app_metadata ?? {}) };
-          await pool.query(`update auth.users set password = coalesce($2, password), app_metadata = $3 where id = $1`, [id, b.password ?? null, JSON.stringify(meta)]);
-          return send(res, 200, await userJson(id, cur.rows[0].email, meta), origin);
+          const email = b.email ? String(b.email).toLowerCase() : cur.rows[0].email;
+          if (email !== cur.rows[0].email && (await pool.query(`select 1 from auth.users where email = $1`, [email])).rowCount) {
+            return send(res, 422, { code: 422, error_code: 'email_exists', msg: 'A user with this email address has already been registered' }, origin);
+          }
+          await pool.query(`update auth.users set password = coalesce($2, password), app_metadata = $3, email = $4 where id = $1`, [id, b.password ?? null, JSON.stringify(meta), email]);
+          return send(res, 200, await userJson(id, email, meta), origin);
         }
         if (id && req.method === 'DELETE') {
           await pool.query(`delete from auth.users where id = $1`, [id]);

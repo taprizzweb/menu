@@ -144,6 +144,34 @@ describe('platform admin API', () => {
     const [a] = await db.admin<{ action: string; actor_role: string }>(`select action, actor_role from public.audit_log where restaurant_id = $1 and action = 'restaurant_created'`, [b.id]);
     expect(a).toMatchObject({ actor_role: 'platform_admin' });
   });
+  it('lists a restaurant\'s logins, resets a password and corrects an email (audit-logged, other restaurants refused)', async () => {
+    as(w.admin);
+    const l = await aGet('staff', `?id=${w.A.rid}`);
+    expect(l.status).toBe(200);
+    const { staff } = await json(l);
+    const owner = staff.find((x: any) => x.role === 'owner');
+    expect(staff[0].role).toBe('owner');
+    expect(owner.email).toBeTruthy();
+    const reset = await aPost('staff-reset-password', { id: w.A.rid, user_id: owner.user_id });
+    expect(reset.status).toBe(200);
+    expect((await json(reset)).temporary_password.length).toBeGreaterThanOrEqual(14);
+    expect(authState.meta.get(owner.user_id)?.app_metadata).toMatchObject({ must_change_password: true });
+    const ch = await aPost('staff-change-email', { id: w.A.rid, user_id: owner.user_id, email: 'New.Owner@Example.test' });
+    expect(ch.status).toBe(200);
+    const [row] = await db.admin<{ email: string }>(`select email from auth.users where id = $1`, [owner.user_id]);
+    expect(row!.email).toBe('new.owner@example.test');
+    const dup = await aPost('staff-change-email', { id: w.A.rid, user_id: owner.user_id, email: staff.find((x: any) => x.role !== 'owner')!.email });
+    expect(dup.status).toBe(409);
+    // a login of restaurant A cannot be touched through restaurant B
+    expect((await aPost('staff-reset-password', { id: w.B.rid, user_id: owner.user_id })).status).toBe(404);
+    const acts = await db.admin<{ action: string; actor_role: string }>(`select action, actor_role from public.audit_log where restaurant_id = $1 and action in ('staff_password_reset','staff_email_changed') order by id`, [w.A.rid]);
+    expect(acts.map((a) => a.action)).toEqual(['staff_password_reset', 'staff_email_changed', 'staff_email_changed']); // the refused duplicate is logged as an attempt
+    expect(acts.every((a) => a.actor_role === 'platform_admin')).toBe(true);
+    // not for restaurant owners
+    as(w.A.owner);
+    expect((await aPost('staff-reset-password', { id: w.A.rid, user_id: owner.user_id })).status).toBe(403);
+    expect((await aGet('staff', `?id=${w.A.rid}`)).status).toBe(403);
+  });
   it('refuses duplicate slugs, reserved slugs, bad emails and does not leave a login behind', async () => {
     as(w.admin);
     const before = (await db.admin(`select 1 from auth.users`)).length;

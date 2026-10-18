@@ -9,7 +9,7 @@ import * as S from '@/lib/schemas/admin';
 import { adminClient } from '@/lib/supabase/admin';
 import type { ZodType } from 'zod';
 
-/** Platform-admin actions. Every one runs only after adminRoute() proved: signed in + own password + second factor + platform_admins row. */
+/** Platform-admin actions. Every one runs only after adminRoute() proved: signed in + own password + platform_admins row. */
 export interface AdminAction {
   method: 'GET' | 'POST';
   schema?: ZodType<any>;
@@ -72,6 +72,51 @@ export const ADMIN_ACTIONS: Record<string, AdminAction> = {
     method: 'GET',
     schema: S.restaurantQuery,
     run: async (ctx, q) => jsonOk({ entries: await rpc('admin_get_audit', { p_admin: ctx.userId, p_restaurant: q.id, p_limit: 200 }) }, ctx.requestId),
+  },
+
+  // Logins of one restaurant (owner first). Emails live in Supabase Auth, so they are looked up with the service key.
+  staff: {
+    method: 'GET',
+    schema: S.restaurantQuery,
+    run: async (ctx, q) => {
+      const rows = (await rpc<{ user_id: string; role: string; display_name: string; active: boolean }[]>('admin_list_staff', { p_admin: ctx.userId, p_restaurant: q.id })) ?? [];
+      const admin = adminClient();
+      const staff = await Promise.all(
+        rows.map(async (r) => {
+          const { data } = await admin.auth.admin.getUserById(r.user_id);
+          return { ...r, email: data?.user?.email ?? null };
+        }),
+      );
+      return jsonOk({ staff }, ctx.requestId);
+    },
+  },
+
+  // Forgotten password: a new temporary password, shown once, which the person must replace at their next sign-in.
+  'staff-reset-password': {
+    method: 'POST',
+    schema: S.staffReset,
+    run: async (ctx, b) => {
+      await rpc('admin_check_staff', { p_admin: ctx.userId, p_restaurant: b.id, p_user: b.user_id, p_action: 'staff_password_reset' });
+      const password = temporaryPassword();
+      const { error } = await adminClient().auth.admin.updateUserById(b.user_id, { password, app_metadata: { must_change_password: true } });
+      if (error) throw Object.assign(new Error('could not reset password'), { dbCode: String(error.status ?? '') });
+      return jsonOk({ temporary_password: password }, ctx.requestId);
+    },
+  },
+
+  // Wrong or changed email. The login keeps its password; the old email stops working at once.
+  'staff-change-email': {
+    method: 'POST',
+    schema: S.staffEmail,
+    run: async (ctx, b) => {
+      await rpc('admin_check_staff', { p_admin: ctx.userId, p_restaurant: b.id, p_user: b.user_id, p_action: 'staff_email_changed' });
+      const { error } = await adminClient().auth.admin.updateUserById(b.user_id, { email: b.email, email_confirm: true });
+      if (error) {
+        if (/already|exists|registered/i.test(error.message)) throw new ApiError(409, 'conflict');
+        throw Object.assign(new Error('could not change email'), { dbCode: String(error.status ?? '') });
+      }
+      return jsonOk({ ok: true, email: b.email }, ctx.requestId);
+    },
   },
 
   // JSON download of everything stored for one restaurant (data-portability / DPDP access). Audit-logged inside the SQL function.

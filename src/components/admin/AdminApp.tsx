@@ -5,6 +5,7 @@ import { errText, fmtDateTime, inputCls } from '@/components/dash/api';
 import { ApiFailure } from '@/lib/guest/client';
 
 interface Row { id: string; slug: string; name: string; status: 'active' | 'suspended'; plan: string; paid_until: string | null; created_at: string; last_order_at: string | null; order_count: number }
+interface StaffRow { user_id: string; role: string; display_name: string; active: boolean; email: string | null }
 interface AuditEntry { id: number; created_at: string; action: string; entity: string; actor_role: string | null; details: Record<string, unknown> | null }
 const smallBtn = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900 hover:bg-stone-100 disabled:opacity-50';
 
@@ -43,9 +44,12 @@ export function AdminApp() {
   const [creating, setCreating] = useState(false);
   const [plan, setPlan] = useState<Row | null>(null);
   const [audit, setAudit] = useState<{ row: Row; entries: AuditEntry[] | null } | null>(null);
+  const [logins, setLogins] = useState<{ row: Row; staff: StaffRow[] | null } | null>(null);
+  const [mailFor, setMailFor] = useState<StaffRow | null>(null);
+  const [newMail, setNewMail] = useState('');
   const [del, setDel] = useState<Row | null>(null);
   const [typed, setTyped] = useState('');
-  const [secret, setSecret] = useState<{ email: string; slug: string; password: string } | null>(null);
+  const [secret, setSecret] = useState<{ email: string; slug: string; password: string; title?: string } | null>(null);
   const [f, setF] = useState({ slug: '', name: '', owner_email: '', owner_name: '', plan: 'pilot', paid: '' });
   const [pf, setPf] = useState({ plan: '', paid: '' });
 
@@ -69,6 +73,11 @@ export function AdminApp() {
   const run = async <T,>(fn: () => Promise<T>, ok?: string): Promise<T | null> => {
     setBusy(true); setErr(null); setMsg(null);
     try { const r = await fn(); if (ok) setMsg(ok); await load(); return r; } catch (e) { setErr(errText(e)); return null; } finally { setBusy(false); }
+  };
+
+  const loadLogins = async (r: Row) => {
+    const x = await adminGet<{ staff: StaffRow[] }>(`staff?id=${r.id}`);
+    setLogins({ row: r, staff: x.staff });
   };
 
   const shown = useMemo(() => (rows ?? []).filter((r) => `${r.name} ${r.slug}`.toLowerCase().includes(q.trim().toLowerCase())), [rows, q]);
@@ -100,6 +109,7 @@ export function AdminApp() {
               <button type="button" className={smallBtn} disabled={busy} onClick={() => void run(() => adminPost('set-status', { id: r.id, status: r.status === 'active' ? 'suspended' : 'active' }), r.status === 'active' ? `${r.name} is suspended: guests cannot order and staff cannot make changes.` : `${r.name} is active again.`)}>{r.status === 'active' ? `Suspend ${r.name}` : `Activate ${r.name}`}</button>
               <button type="button" className={smallBtn} onClick={() => { setErr(null); setPlan(r); setPf({ plan: r.plan, paid: toLocalDate(r.paid_until) }); }} aria-label={`Plan and payment for ${r.name}`}>Plan &amp; payment</button>
               <button type="button" className={smallBtn} onClick={async () => { setAudit({ row: r, entries: null }); try { const x = await adminGet<{ entries: AuditEntry[] }>(`audit?id=${r.id}`); setAudit({ row: r, entries: x.entries }); } catch (e) { setAudit(null); setErr(errText(e)); } }} aria-label={`Activity log for ${r.name}`}>Activity log</button>
+              <button type="button" className={smallBtn} onClick={async () => { setErr(null); setMailFor(null); setLogins({ row: r, staff: null }); try { await loadLogins(r); } catch (e) { setLogins(null); setErr(errText(e)); } }} aria-label={`Logins of ${r.name}`}>Logins</button>
               <a className={smallBtn} href={`/api/admin/export?id=${r.id}`} download aria-label={`Export data of ${r.name}`}>Export data</a>
               <button type="button" className={smallBtn} onClick={() => { setErr(null); setDel(r); setTyped(''); }} aria-label={`Delete ${r.name}`}>Delete…</button>
             </div>
@@ -125,12 +135,43 @@ export function AdminApp() {
         </form>
       </Sheet>
 
-      <Sheet open={!!secret} onClose={() => setSecret(null)} title="Restaurant created" closeLabel="Close">
+      <Sheet open={!!secret} onClose={() => setSecret(null)} title={secret?.title ?? 'Restaurant created'} closeLabel="Close">
         <div className="space-y-3">
-          <p className="text-stone-800">Give these details to the owner ({secret?.email}). They must choose their own password, then set up an authenticator app, the first time they sign in. <strong>This password is shown only once.</strong></p>
+          <p className="text-stone-800">Give these details to {secret?.email}. They sign in with this email and temporary password, then choose their own password. <strong>This password is shown only once.</strong></p>
           <p className="break-all rounded-xl bg-stone-100 p-3 font-mono text-lg" data-testid="temp-password">{secret?.password}</p>
           <button type="button" className={`${btnPrimary} w-full`} onClick={() => setSecret(null)}>I have saved it</button>
         </div>
+      </Sheet>
+
+      <Sheet open={!!logins} onClose={() => { setLogins(null); setMailFor(null); }} title={`Logins: ${logins?.row.name ?? ''}`} closeLabel="Close">
+        {!logins?.staff ? <p>Loading…</p> : logins.staff.length === 0 ? <p>No logins for this restaurant.</p> : (
+          <ul className="space-y-3">
+            {logins.staff.map((m) => (
+              <li key={m.user_id} className="rounded-xl border border-stone-200 p-3 text-sm" data-testid={`login-${m.role}`}>
+                <p className="font-semibold">{m.display_name} · {m.role}{m.active ? '' : ' (switched off)'}</p>
+                <p className="break-all text-stone-800">{m.email ?? 'no email'}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" className={smallBtn} disabled={busy} aria-label={`Reset password of ${m.display_name}`} onClick={async () => {
+                    const r = await run(() => adminPost<{ temporary_password: string }>('staff-reset-password', { id: logins.row.id, user_id: m.user_id }));
+                    if (r) { setLogins(null); setSecret({ email: m.email ?? m.display_name, slug: logins.row.slug, password: r.temporary_password, title: 'New temporary password' }); }
+                  }}>Reset password</button>
+                  <button type="button" className={smallBtn} disabled={busy} aria-label={`Change email of ${m.display_name}`} onClick={() => { setErr(null); setMailFor(m); setNewMail(m.email ?? ''); }}>Change email</button>
+                </div>
+                {mailFor?.user_id === m.user_id && (
+                  <form className="mt-3 space-y-2" onSubmit={async (e) => {
+                    e.preventDefault();
+                    const r = await run(() => adminPost('staff-change-email', { id: logins.row.id, user_id: m.user_id, email: newMail }), 'Email changed. The old email no longer works.');
+                    if (r) { setMailFor(null); await loadLogins(logins.row); }
+                  }}>
+                    <label className="block text-sm font-semibold">New email<input type="email" required inputMode="email" value={newMail} onChange={(e) => setNewMail(e.target.value)} className={inputCls} /></label>
+                    {err && <Alert>{err}</Alert>}
+                    <button type="submit" disabled={busy} className={`${btnPrimary} w-full`}>Save email</button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </Sheet>
 
       <Sheet open={!!plan} onClose={() => setPlan(null)} title={`Plan & payment: ${plan?.name ?? ''}`} closeLabel="Close">

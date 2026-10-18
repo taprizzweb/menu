@@ -122,6 +122,42 @@ test.describe('platform admin', () => {
     }
   });
 
+  test('forgotten password and wrong email: the admin resets the password and corrects the email from Logins', async ({ page, browser }) => {
+    const slug = `e2e-${suffix()}`;
+    const wrong = `${slug}@gamil.test`;
+    const right = `${slug}@gmail.test`;
+    await asAdmin(page);
+    await page.getByRole('button', { name: 'Create restaurant' }).click();
+    await dialog(page).getByLabel('Restaurant name').fill(`Cafe ${slug}`);
+    await dialog(page).getByLabel('Web address (after the domain)').fill(slug);
+    await dialog(page).getByLabel('Owner name').fill('Olive Owner');
+    await dialog(page).getByLabel('Owner email').fill(wrong);
+    await dialog(page).getByRole('button', { name: 'Create restaurant and owner login' }).click();
+    await dialog(page).getByRole('button', { name: 'I have saved it' }).click();
+
+    await page.getByLabel(`Logins of Cafe ${slug}`).click();
+    await expect(dialog(page)).toContainText(wrong);
+    await dialog(page).getByRole('button', { name: 'Change email of Olive Owner' }).click();
+    await dialog(page).getByLabel('New email').fill(right);
+    await dialog(page).getByRole('button', { name: 'Save email' }).click();
+    await expect(dialog(page)).toContainText(right);
+    await dialog(page).getByRole('button', { name: 'Reset password of Olive Owner' }).click();
+    await expect(dialog(page)).toContainText('shown only once');
+    const temp = (await dialog(page).getByTestId('temp-password').textContent())!;
+
+    const ctx = await browser.newContext(test.info().project.use as never);
+    const p = await ctx.newPage();
+    try {
+      await p.goto('/login');
+      await p.getByLabel('Email').fill(right);
+      await p.getByLabel('Password').fill(temp);
+      await p.getByRole('button', { name: 'Sign in' }).click();
+      await expect(p).toHaveURL(/\/account\/password$/);
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('the platform admin signs in with email + password only and opens /admin', async ({ browser }) => {
     const ctx = await browser.newContext(test.info().project.use as never);
     const p = await ctx.newPage();

@@ -24,7 +24,16 @@ export const fakeAdminClient = {
         authState.meta.set(id, { password, app_metadata: app_metadata ?? {} });
         return { data: { user: { id } }, error: null };
       },
-      updateUserById: async (id: string, attrs: { password?: string; app_metadata?: Record<string, unknown> }) => {
+      getUserById: async (id: string) => {
+        const r = await state.pool!.query<{ email: string }>(`select email from auth.users where id = $1`, [id]);
+        return { data: { user: r.rows[0] ? { id, email: r.rows[0].email } : null }, error: null };
+      },
+      updateUserById: async (id: string, attrs: { password?: string; email?: string; app_metadata?: Record<string, unknown> }) => {
+        if (attrs.email) {
+          const taken = await state.pool!.query(`select 1 from auth.users where email = $1 and id <> $2`, [attrs.email, id]);
+          if (taken.rowCount) return { data: { user: null }, error: { status: 422, message: 'A user with this email address has already been registered' } };
+          await state.pool!.query(`update auth.users set email = $1 where id = $2`, [attrs.email, id]);
+        }
         const m = authState.meta.get(id) ?? { app_metadata: {} };
         authState.meta.set(id, { password: attrs.password ?? m.password, app_metadata: { ...m.app_metadata, ...(attrs.app_metadata ?? {}) } });
         return { data: { user: { id } }, error: null };

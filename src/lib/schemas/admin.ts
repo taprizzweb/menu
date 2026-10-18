@@ -29,3 +29,5 @@ export const setStatus = z.object({ id: uuid, status: z.enum(['active', 'suspend
 export const setPlan = z.object({ id: uuid, plan: text(30), paid_until: paidUntil }).strict();
 export const restaurantQuery = z.object({ id: uuid });
 export const deleteRestaurant = z.object({ id: uuid, confirm_slug: z.string().min(1).max(60) }).strict();
+export const staffReset = z.object({ id: uuid, user_id: uuid }).strict();
+export const staffEmail = z.object({ id: uuid, user_id: uuid, email: z.string().trim().toLowerCase().email().max(254) }).strict();
