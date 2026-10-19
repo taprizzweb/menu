@@ -7,6 +7,7 @@ export const en = {
   'hero.explore': 'Explore the menu',
   'hero.info': 'Info & contact',
   'info.title': 'Find us',
+  'info.exploreMore': 'Explore more before leaving',
   'menu.favourites': 'Our favourites',
   'item.view': 'View {name}',
   'item.details': 'Dish details',

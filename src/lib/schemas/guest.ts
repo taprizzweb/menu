@@ -35,7 +35,7 @@ export type RequestBody = z.infer<typeof requestBody>;
 
 export const slugParam = slug;
 
-export const EVENTS = ['menu_opened', 'qr_landing', 'category_viewed', 'item_viewed', 'search', 'whatsapp_click', 'call_click', 'directions_click', 'instagram_click', 'google_review_click', 'cart_add'] as const;
+export const EVENTS = ['menu_opened', 'qr_landing', 'category_viewed', 'item_viewed', 'search', 'whatsapp_click', 'call_click', 'directions_click', 'instagram_click', 'google_review_click', 'cart_add', 'explore_click'] as const;
 export type MenuEvent = (typeof EVENTS)[number];
 export const eventBody = z
   .object({ slug, token: token.nullish(), visit: uuid, event: z.enum(EVENTS), item_id: uuid.nullish(), category_id: uuid.nullish() })

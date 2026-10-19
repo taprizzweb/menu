@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { normalizeInstagram, normalizePhone } from '@/lib/profile';
+import { normalizeExploreCode } from '@/lib/profile';
 
 const uuid = z.string().uuid();
 const clean = (max: number) =>
@@ -87,16 +87,10 @@ export const auditQuery = z.object({ limit: z.coerce.number().int().min(1).max(2
 export const passwordChange = z.object({ password: z.string().min(12, 'at least 12 characters').max(128) }).strict();
 
 const optText = (max: number) => z.string().trim().max(max).regex(/^[^\u0000-\u001F\u007F]*$/).default('');
-const phone = z.string().trim().max(30).default('').transform((v, ctx) => {
+const exploreCode = z.string().trim().max(300).default('').transform((v, ctx) => {
   if (v === '') return '';
-  const n = normalizePhone(v);
-  if (!n) ctx.addIssue({ code: 'custom', message: 'not a valid phone number' });
-  return n;
-});
-const instagram = z.string().trim().max(200).default('').transform((v, ctx) => {
-  if (v === '') return '';
-  const n = normalizeInstagram(v);
-  if (!n) ctx.addIssue({ code: 'custom', message: 'not a valid Instagram profile' });
+  const n = normalizeExploreCode(v);
+  if (!n) ctx.addIssue({ code: 'custom', message: 'only letters, numbers, - and _' });
   return n;
 });
 const imagePath = z.string().trim().max(200).regex(/^[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/).or(z.literal('')).default('');
@@ -106,11 +100,9 @@ export const profileSave = z
     description: optText(400),
     logo_path: imagePath,
     banner_path: imagePath,
-    phone,
-    whatsapp: phone,
     address: optText(200),
     hours_text: optText(200),
-    instagram_url: instagram,
+    explore_code: exploreCode,
   })
   .strict();
 

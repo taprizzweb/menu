@@ -2,16 +2,9 @@ import type { MenuData } from '@/lib/guest/types';
 import type { TrackIds } from '@/lib/guest/analytics';
 import type { Translator } from '@/lib/i18n';
 import type { MenuEvent } from '@/lib/schemas/guest';
-import { mapsLink, telLink, whatsappLink } from '@/lib/profile';
+import { exploreUrl } from '@/lib/profile';
 
 type R = MenuData['restaurant'];
-
-const icon = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, focusable: false } as const;
-const IPhone = () => <svg {...icon}><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" /></svg>;
-const IChat = () => <svg {...icon}><path d="M4 5h16v11H9l-5 4z" /></svg>;
-const IPin = () => <svg {...icon}><path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z" /><circle cx="12" cy="10" r="2.5" /></svg>;
-const IInsta = () => <svg {...icon}><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.5" /><circle cx="17" cy="7" r=".6" /></svg>;
-const IStar = () => <svg {...icon}><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" /></svg>;
 
 /**
  * Top of the public menu: a full-width cover photo (or the restaurant colour when there is none) with the name,
@@ -52,12 +45,9 @@ export function RestaurantHero({ r, imageBase, tableLabel, t, compact = false }:
   );
 }
 
-const tile = 'flex min-h-14 items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-900 hover:bg-stone-50';
-
-/** "Find us": about text, address, hours and the contact actions the owner configured, kept out of the way of the menu. */
+/** "Find us": about text, address and hours, plus the one "Explore more before leaving" button when the owner set a link. */
 export function RestaurantInfo({ r, t, onTrack }: { r: R; t: Translator; onTrack?: (e: MenuEvent, ids?: TrackIds) => void }) {
-  const hasActions = r.phone || r.whatsapp || r.address || r.instagram_url || r.review_url;
-  if (!r.description && !r.address && !r.hours_text && !hasActions) return null;
+  if (!r.description && !r.address && !r.hours_text && !r.explore_code) return null;
   return (
     <section id="info" aria-labelledby="info-h" className="mx-auto mt-12 max-w-5xl scroll-mt-4 px-4">
       <div className="rounded-3xl border border-stone-200 bg-white p-5 sm:p-8">
@@ -69,16 +59,17 @@ export function RestaurantInfo({ r, t, onTrack }: { r: R; t: Translator; onTrack
             {r.hours_text && <div><dt className="inline font-semibold">{t('hero.hours')}: </dt><dd className="inline">{r.hours_text}</dd></div>}
           </dl>
         )}
-        {hasActions && (
-          <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {r.phone && <li><a className={tile} href={telLink(r.phone)} onClick={() => onTrack?.('call_click')}><IPhone />{t('hero.call')}</a></li>}
-            {r.whatsapp && <li><a className={tile} href={whatsappLink(r.whatsapp, t('hero.whatsappMessage', { name: r.name }))} target="_blank" rel="noopener noreferrer" onClick={() => onTrack?.('whatsapp_click')}><IChat />{t('hero.whatsapp')}</a></li>}
-            {r.address && <li><a className={tile} href={mapsLink(r.name, r.address)} target="_blank" rel="noopener noreferrer" onClick={() => onTrack?.('directions_click')}><IPin />{t('hero.directions')}</a></li>}
-            {r.instagram_url && <li><a className={tile} href={r.instagram_url} target="_blank" rel="noopener noreferrer" onClick={() => onTrack?.('instagram_click')}><IInsta />{t('hero.instagram')}</a></li>}
-            {r.review_url && <li><a className={tile} href={r.review_url} target="_blank" rel="noopener noreferrer" aria-describedby="review-note" onClick={() => onTrack?.('google_review_click')}><IStar />{t('hero.review')}</a></li>}
-          </ul>
+        {r.explore_code && (
+          <a
+            href={exploreUrl(r.explore_code)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => onTrack?.('explore_click')}
+            className="mt-5 flex min-h-14 items-center justify-center rounded-xl bg-accent px-6 text-base font-bold text-white shadow-sm hover:opacity-95"
+          >
+            {t('info.exploreMore')}
+          </a>
         )}
-        {r.review_url && <p id="review-note" className="mt-2 text-xs text-stone-700">{t('hero.reviewNote')}</p>}
       </div>
     </section>
   );

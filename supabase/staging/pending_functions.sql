@@ -1,43 +1,79 @@
 -- Run ONCE in the Supabase SQL editor of the project "menu" (SQL Editor > New query > paste > Run).
--- It adds the functions for Analytics and for "orders only near the cafe". Safe to run again.
+-- Updates the functions for the new "Explore more before leaving" button. Safe to run again.
+-- (The older analytics / near-the-cafe functions are already installed; this file replaces the earlier one.)
 
--- ===== Analytics (migration 0018) =====
-create or replace function public.guest_record_event(
-  p_slug text, p_token text, p_visit uuid, p_event text, p_item uuid, p_category uuid, p_ip_hash text)
-returns boolean language plpgsql security definer set search_path = '' as $$
+drop function if exists public.mgr_update_profile(text, text, text, text, text, text, text, text, text);
+create or replace function public.mgr_update_profile(
+  p_tagline text, p_description text, p_logo text, p_banner text, p_address text, p_hours text, p_explore text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v_rid uuid := private.require_staff(array['owner']);
+begin
+  update public.restaurants set
+    tagline = nullif(btrim(coalesce(p_tagline, '')), ''),
+    description = nullif(btrim(coalesce(p_description, '')), ''),
+    logo_path = nullif(btrim(coalesce(p_logo, '')), ''),
+    banner_path = nullif(btrim(coalesce(p_banner, '')), ''),
+    address = nullif(btrim(coalesce(p_address, '')), ''),
+    hours_text = nullif(btrim(coalesce(p_hours, '')), ''),
+    explore_code = nullif(btrim(coalesce(p_explore, '')), '')
+  where id = v_rid;
+exception when check_violation then
+  raise exception using errcode = 'GM015', message = 'invalid_input';
+end $$;
+revoke all on function public.mgr_update_profile(text, text, text, text, text, text, text) from public, anon, service_role;
+grant execute on function public.mgr_update_profile(text, text, text, text, text, text, text) to authenticated;
+
+create or replace function public.mgr_get_settings() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare v_rid uuid := private.require_read(array['owner','manager']);
+begin
+  return (select jsonb_build_object('name', r.name, 'slug', r.slug, 'review_url', r.review_url, 'accent', r.accent,
+            'amber_minutes', r.amber_minutes, 'red_minutes', r.red_minutes, 'plan', r.plan, 'paid_until', r.paid_until,
+            'status', r.status, 'role', private.my_role(), 'id', r.id,
+            'tagline', r.tagline, 'description', r.description, 'logo_path', r.logo_path, 'banner_path', r.banner_path,
+            'address', r.address, 'hours_text', r.hours_text, 'explore_code', r.explore_code,
+            'geo_required', r.geo_required, 'geo_lat', r.geo_lat, 'geo_lng', r.geo_lng, 'geo_radius_m', r.geo_radius_m)
+          from public.restaurants r where r.id = v_rid);
+end $$;
+
+create or replace function public.guest_get_menu(p_slug text, p_token text default null)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
 declare
   r public.restaurants;
-  v_table uuid;
-  v_window interval;
+  v_table_label text;
 begin
-  select * into r from public.restaurants where slug = p_slug and status = 'active';
-  if not found then return false; end if;
-  if p_visit is null or p_event is null then return false; end if;
-  -- generous per-address cap (cafes share one wifi address); events beyond it are silently dropped
-  if p_ip_hash is not null and not private.rl_hit('ev:' || p_ip_hash, 600, 600) then return false; end if;
+  select * into r from public.restaurants where slug = p_slug;
+  if not found then
+    raise exception using errcode = 'GM012', message = 'not_found';
+  end if;
+  if r.status <> 'active' then
+    return jsonb_build_object('status', 'suspended', 'restaurant', jsonb_build_object('name', r.name));
+  end if;
   if p_token is not null then
-    select t.id into v_table from public.dining_tables t where t.qr_token = p_token and t.restaurant_id = r.id and t.active;
+    select t.label into v_table_label from public.dining_tables t
+     where t.qr_token = p_token and t.restaurant_id = r.id and t.active;
   end if;
-  if p_event = 'qr_landing' and v_table is null then return false; end if;
-  -- the item / category must belong to this restaurant, otherwise ignore the reference
-  if p_item is not null and not exists (select 1 from public.items where id = p_item and restaurant_id = r.id) then p_item := null; end if;
-  if p_category is not null and not exists (select 1 from public.categories where id = p_category and restaurant_id = r.id) then p_category := null; end if;
-  if p_event in ('item_viewed','category_viewed') and coalesce(p_item, p_category) is null then return false; end if;
-  -- de-duplication: opening and viewing count once per visit per 30 minutes; taps and searches once per 10 seconds
-  v_window := case when p_event in ('menu_opened','qr_landing','item_viewed','category_viewed') then interval '30 minutes' else interval '10 seconds' end;
-  if exists (select 1 from public.menu_events e where e.restaurant_id = r.id and e.visit_id = p_visit and e.event = p_event
-               and e.item_id is not distinct from p_item and e.category_id is not distinct from p_category
-               and e.created_at > now() - v_window) then
-    return false;
-  end if;
-  insert into public.menu_events (restaurant_id, visit_id, event, item_id, category_id, table_id)
-  values (r.id, p_visit, p_event, p_item, p_category, v_table);
-  -- retention: drop old rows a few at a time so the table never grows without bound
-  delete from public.menu_events where id in (select id from public.menu_events where created_at < now() - interval '180 days' limit 200);
-  return true;
+  return jsonb_build_object(
+    'status', 'active',
+    'restaurant', jsonb_build_object('name', r.name, 'slug', r.slug, 'accent', r.accent,
+      'tagline', r.tagline, 'description', r.description, 'logo_path', r.logo_path, 'banner_path', r.banner_path,
+      'address', r.address, 'hours_text', r.hours_text, 'explore_code', r.explore_code),
+    'table_label', v_table_label,
+    'token_valid', v_table_label is not null,
+    'categories', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', c.id, 'name_en', c.name_en, 'name_hi', c.name_hi,
+        'items', coalesce((
+          select jsonb_agg(jsonb_build_object(
+            'id', i.id, 'name_en', i.name_en, 'name_hi', i.name_hi,
+            'description_en', i.description_en, 'description_hi', i.description_hi,
+            'price_paise', i.price_paise, 'diet', i.diet, 'spice', i.spice, 'image_path', i.image_path,
+            'is_available', i.is_available, 'is_bestseller', i.is_bestseller, 'is_chef_pick', i.is_chef_pick)
+            order by i.sort_order, i.name_en)
+          from public.items i where i.category_id = c.id and i.restaurant_id = r.id), '[]'::jsonb))
+        order by c.sort_order, c.name_en)
+      from public.categories c where c.restaurant_id = r.id and c.active), '[]'::jsonb));
 end $$;
-revoke all on function public.guest_record_event(text, text, uuid, text, uuid, uuid, text) from public, anon, authenticated;
-grant execute on function public.guest_record_event(text, text, uuid, text, uuid, uuid, text) to service_role;
 
 create or replace function public.mgr_analytics(p_range text) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
@@ -61,7 +97,8 @@ begin
         'calls', count(*) filter (where event = 'call_click'),
         'directions', count(*) filter (where event = 'directions_click'),
         'instagram', count(*) filter (where event = 'instagram_click'),
-        'google_review', count(*) filter (where event = 'google_review_click'))
+        'google_review', count(*) filter (where event = 'google_review_click'),
+        'explore', count(*) filter (where event = 'explore_click'))
       from public.menu_events where restaurant_id = v_rid and created_at >= v_from),
     'daily', coalesce((select jsonb_agg(jsonb_build_object('day', d::date, 'opens', coalesce(c.opens, 0), 'visits', coalesce(c.visits, 0)) order by d)
         from generate_series((v_from at time zone 'Asia/Kolkata')::date, (now() at time zone 'Asia/Kolkata')::date, interval '1 day') d
@@ -86,54 +123,3 @@ begin
 end $$;
 revoke all on function public.mgr_analytics(text) from public, anon, service_role;
 grant execute on function public.mgr_analytics(text) to authenticated;
-
--- ===== Orders only near the cafe (migration 0019) =====
--- 'ok' | 'required' (no position sent) | 'inaccurate' (phone could not fix its position well) | 'too_far'
-create or replace function public.guest_check_location(p_slug text, p_lat double precision, p_lng double precision, p_acc double precision)
-returns text language plpgsql stable security definer set search_path = '' as $$
-declare
-  r public.restaurants;
-  v_dist double precision;
-  a double precision;
-  b double precision;
-begin
-  select * into r from public.restaurants where slug = p_slug;
-  if not found or not r.geo_required then return 'ok'; end if;
-  if p_lat is null or p_lng is null or p_lat not between -90 and 90 or p_lng not between -180 and 180 then return 'required'; end if;
-  if p_acc is null or p_acc < 0 or p_acc > 500 then return 'inaccurate'; end if;
-  a := sin(radians(p_lat - r.geo_lat) / 2) ^ 2 + cos(radians(r.geo_lat)) * cos(radians(p_lat)) * sin(radians(p_lng - r.geo_lng) / 2) ^ 2;
-  v_dist := 2 * 6371000 * asin(least(1, sqrt(a)));
-  -- the phone's own accuracy estimate gives the guest the benefit of the doubt, up to 200 m
-  if v_dist > r.geo_radius_m + least(p_acc, 200) then return 'too_far'; end if;
-  return 'ok';
-end $$;
-revoke all on function public.guest_check_location(text, double precision, double precision, double precision) from public, anon, authenticated;
-grant execute on function public.guest_check_location(text, double precision, double precision, double precision) to service_role;
-
-create or replace function public.mgr_update_location(p_required boolean, p_lat double precision, p_lng double precision, p_radius int) returns void
-language plpgsql security definer set search_path = '' as $$
-declare v_rid uuid := private.require_staff(array['owner']);
-begin
-  if p_required is null or p_radius is null or p_radius not between 50 and 2000
-     or (p_required and (p_lat is null or p_lng is null))
-     or (p_lat is not null and p_lat not between -90 and 90) or (p_lng is not null and p_lng not between -180 and 180) then
-    raise exception using errcode = 'GM015', message = 'invalid_input';
-  end if;
-  update public.restaurants set geo_required = p_required, geo_lat = p_lat, geo_lng = p_lng, geo_radius_m = p_radius where id = v_rid;
-end $$;
-revoke all on function public.mgr_update_location(boolean, double precision, double precision, int) from public, anon, service_role;
-grant execute on function public.mgr_update_location(boolean, double precision, double precision, int) to authenticated;
-
-create or replace function public.mgr_get_settings() returns jsonb
-language plpgsql stable security definer set search_path = '' as $$
-declare v_rid uuid := private.require_read(array['owner','manager']);
-begin
-  return (select jsonb_build_object('name', r.name, 'slug', r.slug, 'review_url', r.review_url, 'accent', r.accent,
-            'amber_minutes', r.amber_minutes, 'red_minutes', r.red_minutes, 'plan', r.plan, 'paid_until', r.paid_until,
-            'status', r.status, 'role', private.my_role(), 'id', r.id,
-            'tagline', r.tagline, 'description', r.description, 'logo_path', r.logo_path, 'banner_path', r.banner_path,
-            'phone', r.phone, 'whatsapp', r.whatsapp, 'address', r.address, 'hours_text', r.hours_text,
-            'instagram_url', r.instagram_url,
-            'geo_required', r.geo_required, 'geo_lat', r.geo_lat, 'geo_lng', r.geo_lng, 'geo_radius_m', r.geo_radius_m)
-          from public.restaurants r where r.id = v_rid);
-end $$;

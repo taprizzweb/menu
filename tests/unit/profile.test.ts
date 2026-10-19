@@ -1,39 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { mapsLink, normalizeInstagram, normalizePhone, telLink, whatsappLink } from '@/lib/profile';
+import { EXPLORE_BASE, exploreUrl, normalizeExploreCode } from '@/lib/profile';
 import { profileSave } from '@/lib/schemas/dash';
+import { clampCenter, scaleOf, sourceRect } from '@/lib/dash/crop';
 
-describe('contact helpers', () => {
-  it('normalises phone numbers to digits with the India code', () => {
-    expect(normalizePhone('98765 43210')).toBe('919876543210');
-    expect(normalizePhone('+91 98765-43210')).toBe('919876543210');
-    expect(normalizePhone('09876543210')).toBe('919876543210');
-    expect(normalizePhone('+1 (415) 555-0100')).toBe('14155550100');
-    expect(normalizePhone('12345')).toBe('');
-    expect(normalizePhone('abc')).toBe('');
+describe('explore link', () => {
+  it('builds the link from the code the owner typed and nothing else', () => {
+    expect(EXPLORE_BASE).toBe('https://smarty.taprizz.in/sq/');
+    expect(exploreUrl('tattoo-cafe_1')).toBe('https://smarty.taprizz.in/sq/tattoo-cafe_1');
   });
-  it('builds correctly encoded WhatsApp, tel and maps links', () => {
-    expect(whatsappLink('919876543210', 'Hello Café & Bar, is "this" open?')).toBe('https://wa.me/919876543210?text=Hello%20Caf%C3%A9%20%26%20Bar%2C%20is%20%22this%22%20open%3F');
-    expect(whatsappLink('919876543210')).toBe('https://wa.me/919876543210');
-    expect(telLink('919876543210')).toBe('tel:+919876543210');
-    expect(mapsLink('Tattoo Cafe', 'MI Road, Jaipur')).toBe('https://www.google.com/maps/search/?api=1&query=Tattoo%20Cafe%20MI%20Road%2C%20Jaipur');
-  });
-  it('accepts only real Instagram profiles', () => {
-    expect(normalizeInstagram('@tattoo.cafe')).toBe('https://www.instagram.com/tattoo.cafe');
-    expect(normalizeInstagram('https://www.instagram.com/tattoo.cafe/')).toBe('https://www.instagram.com/tattoo.cafe/');
-    expect(normalizeInstagram('https://evil.example/instagram.com/x')).toBe('');
-    expect(normalizeInstagram('javascript:alert(1)')).toBe('');
-    expect(normalizeInstagram('')).toBe('');
+  it('accepts a plain code or the whole pasted link, and nothing that could point somewhere else', () => {
+    expect(normalizeExploreCode(' abc123 ')).toBe('abc123');
+    expect(normalizeExploreCode('https://smarty.taprizz.in/sq/abc123')).toBe('abc123');
+    expect(normalizeExploreCode('https://smarty.taprizz.in/sq/abc123/')).toBe('abc123');
+    for (const bad of ['', 'a b', '../x', 'a/b', 'https://evil.example/sq/abc', 'abc?x=1', 'abc#x', '//evil.example', 'x'.repeat(65), 'javascript:alert(1)']) expect(normalizeExploreCode(bad), bad).toBe('');
   });
 });
 
 describe('profile schema', () => {
   const uuid = '11111111-1111-4111-8111-111111111111';
-  it('cleans numbers and refuses bad input', () => {
-    const ok = profileSave.parse({ tagline: ' Best chai ', phone: '98765 43210', whatsapp: '', instagram_url: '@x', logo_path: `${uuid}/${uuid}.webp` });
-    expect(ok).toMatchObject({ tagline: 'Best chai', phone: '919876543210', whatsapp: '', instagram_url: 'https://www.instagram.com/x', banner_path: '' });
-    expect(profileSave.safeParse({ phone: '123' }).success).toBe(false);
+  it('cleans values and refuses bad input', () => {
+    const ok = profileSave.parse({ tagline: ' Best chai ', explore_code: 'https://smarty.taprizz.in/sq/tattoo', logo_path: `${uuid}/${uuid}.webp` });
+    expect(ok).toMatchObject({ tagline: 'Best chai', explore_code: 'tattoo', banner_path: '', address: '' });
+    expect(profileSave.safeParse({ explore_code: 'a/b' }).success).toBe(false);
+    expect(profileSave.safeParse({ explore_code: 'https://evil.example/x' }).success).toBe(false);
     expect(profileSave.safeParse({ logo_path: '../../etc/passwd' }).success).toBe(false);
-    expect(profileSave.safeParse({ instagram_url: 'https://evil.example' }).success).toBe(false);
+    expect(profileSave.safeParse({ phone: '9876543210' }).success).toBe(false); // the old contact fields are gone
     expect(profileSave.safeParse({ unknown: 'x' }).success).toBe(false);
+  });
+});
+
+describe('crop maths', () => {
+  const base = { frameW: 300, frameH: 200, imgW: 3000, imgH: 3000, zoom: 1, cx: 1500, cy: 1500 };
+  it('covers the frame and never shows outside the photo', () => {
+    expect(scaleOf(base)).toBeCloseTo(0.1); // 300 / 3000
+    const r = sourceRect(base);
+    expect(r.sw).toBeCloseTo(3000);
+    expect(r.sh).toBeCloseTo(2000);
+    // dragging far to the corner is held inside the photo
+    const c = clampCenter({ ...base, cx: -5000, cy: 99999 });
+    const e = sourceRect({ ...base, ...c });
+    expect(e.sx).toBeGreaterThanOrEqual(0);
+    expect(e.sy + e.sh).toBeLessThanOrEqual(3000 + 1e-9);
+  });
+  it('zooming in shows a smaller part of the photo', () => {
+    const z = sourceRect({ ...base, zoom: 2 });
+    expect(z.sw).toBeCloseTo(1500);
+    expect(z.sh / z.sw).toBeCloseTo(200 / 300);
+    const wide = sourceRect({ frameW: 300, frameH: 300, imgW: 4000, imgH: 2000, zoom: 1, cx: 2000, cy: 1000 });
+    expect(wide.sw).toBeCloseTo(2000);
+    expect(wide.sh).toBeCloseTo(2000);
   });
 });

@@ -50,7 +50,7 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
   'table-rotate': { method: 'POST', rpc: 'mgr_rotate_table_token', schema: S.idOnly, args: (b) => ({ p_table_id: b.id }), result: () => ({ ok: true }) },
   'profile-save': {
     method: 'POST', rpc: 'mgr_update_profile', schema: S.profileSave,
-    args: (b) => ({ p_tagline: b.tagline, p_description: b.description, p_logo: b.logo_path, p_banner: b.banner_path, p_phone: b.phone, p_whatsapp: b.whatsapp, p_address: b.address, p_hours: b.hours_text, p_instagram: b.instagram_url }),
+    args: (b) => ({ p_tagline: b.tagline, p_description: b.description, p_logo: b.logo_path, p_banner: b.banner_path, p_address: b.address, p_hours: b.hours_text, p_explore: b.explore_code }),
     result: () => ({ ok: true }),
   },
   'location-save': {

@@ -26,8 +26,7 @@ export interface MenuData {
   restaurant: {
     name: string; slug?: string; accent?: AccentKey;
     tagline?: string | null; description?: string | null; logo_path?: string | null; banner_path?: string | null;
-    phone?: string | null; whatsapp?: string | null; address?: string | null; hours_text?: string | null;
-    instagram_url?: string | null; review_url?: string | null;
+    address?: string | null; hours_text?: string | null; explore_code?: string | null;
   };
   table_label?: string | null;
   token_valid?: boolean;

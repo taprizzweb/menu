@@ -299,34 +299,50 @@ test.describe('settings', () => {
       await q(`update public.restaurants set name = $1, accent = $2, amber_minutes = $3, red_minutes = $4, review_url = $5 where slug = 'spice-garden'`, [orig!.name, orig!.accent, orig!.amber_minutes, orig!.red_minutes, orig!.review_url]);
     }
   });
-  test('owner fills in the public profile with a logo; the guest menu shows the identity and only the buttons that were filled in', async ({ page }) => {
+  test('owner crops a logo and banner and sets the explore link; the guest menu shows the identity and one "Explore more before leaving" button, no contact buttons', async ({ page }) => {
     await loginAs(page, 'owner', '/dash/settings');
     await page.goto('/spice-garden');
-    await expect(page.getByRole('link', { name: 'Call' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Explore more before leaving' })).toHaveCount(0);
     await page.goto('/dash/settings');
     try {
+      // logo: choose a file, then choose the visible part
       await page.getByLabel('Choose logo').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: await bigPng(page) });
+      await expect(dialog(page).getByText('Drag the photo to choose what shows')).toBeVisible();
+      await dialog(page).getByLabel('Zoom', { exact: true }).fill('2');
+      await dialog(page).getByRole('group', { name: /Crop area/ }).focus();
+      await page.keyboard.press('ArrowLeft');
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-dash-crop.png` });
+      await dialog(page).getByRole('button', { name: 'Use this crop' }).click();
       await expect(page.getByAltText('Current logo')).toBeVisible();
+      // banner: cancelling keeps nothing
+      await page.getByLabel('Choose banner picture').setInputFiles({ name: 'b.png', mimeType: 'image/png', buffer: await bigPng(page) });
+      await dialog(page).getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByAltText('Current banner picture')).toHaveCount(0);
+      await page.getByLabel('Choose banner picture').setInputFiles({ name: 'b.png', mimeType: 'image/png', buffer: await bigPng(page) });
+      await dialog(page).getByRole('button', { name: 'Use this crop' }).click();
+      await expect(page.getByAltText('Current banner picture')).toBeVisible();
+
       await page.getByLabel('Short tagline').fill('Garden-fresh North Indian');
-      await page.getByLabel('Phone number').fill('98765 43210');
-      await page.getByLabel('WhatsApp number').fill('98765 43210');
       await page.getByLabel('Address').fill('12 Garden Road, Jaipur');
       await page.getByLabel('Opening hours').fill('Daily 11 am - 11 pm');
-      await page.getByLabel('Instagram').fill('@spicegarden');
+      await page.getByLabel('Explore link code').fill('https://evil.example/x');
+      await page.getByRole('button', { name: 'Save profile' }).click();
+      await expect(page.locator('p[role="alert"]').first()).toBeVisible(); // a foreign link is refused
+      await page.getByLabel('Explore link code').fill('spice-garden_1');
       await page.getByRole('button', { name: 'Save profile' }).click();
       await expect(page.getByText('Profile saved.')).toBeVisible();
+
       await page.goto('/spice-garden');
       await expect(page.getByText('Garden-fresh North Indian')).toBeVisible();
       await expect(page.getByAltText('Spice Garden logo')).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Call' })).toHaveAttribute('href', 'tel:+919876543210');
-      const wa = await page.getByRole('link', { name: 'WhatsApp' }).getAttribute('href');
-      expect(wa).toMatch(/^https:\/\/wa\.me\/919876543210\?text=Hello%20Spice%20Garden/);
-      await expect(page.getByRole('link', { name: 'Directions' })).toHaveAttribute('href', /google\.com\/maps\/search\/\?api=1&query=Spice%20Garden%2012%20Garden%20Road/);
-      await expect(page.getByRole('link', { name: 'Instagram' })).toHaveAttribute('href', 'https://www.instagram.com/spicegarden');
+      await expect(page.getByRole('link', { name: 'Explore more before leaving' })).toHaveAttribute('href', 'https://smarty.taprizz.in/sq/spice-garden_1');
+      await expect(page.getByRole('link', { name: 'Explore more before leaving' })).toHaveAttribute('rel', /noopener/);
+      for (const gone of ['Call', 'WhatsApp', 'Directions', 'Instagram', 'Review us on Google']) await expect(page.getByRole('link', { name: gone, exact: true })).toHaveCount(0);
       await expect(page.getByText('Daily 11 am - 11 pm')).toBeVisible();
+      expect((await q<{ b: string | null }>(`select banner_path b from public.restaurants where slug = 'spice-garden'`))[0]!.b).toMatch(/\.webp$/);
       await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-guest-profile.png` });
     } finally {
-      await q(`update public.restaurants set tagline = null, description = null, logo_path = null, banner_path = null, phone = null, whatsapp = null, address = null, hours_text = null, instagram_url = null where slug = 'spice-garden'`);
+      await q(`update public.restaurants set tagline = null, description = null, logo_path = null, banner_path = null, address = null, hours_text = null, explore_code = null where slug = 'spice-garden'`);
     }
   });
   test('owner switches on "orders only near the cafe" with the cafe position; it needs a position', async ({ page }) => {

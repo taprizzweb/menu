@@ -6,7 +6,7 @@ import { fmtDateTime, useDashData } from './api';
 
 interface Analytics {
   range: string; from: string;
-  totals: { menu_opens: number; visits: number; qr_landings: number; item_views: number; searches: number; cart_adds: number; whatsapp: number; calls: number; directions: number; instagram: number; google_review: number };
+  totals: { menu_opens: number; visits: number; qr_landings: number; item_views: number; searches: number; cart_adds: number; whatsapp: number; calls: number; directions: number; instagram: number; google_review: number; explore: number };
   daily: { day: string; opens: number; visits: number }[];
   top_items: { name: string; views: number }[];
   categories: { name: string; views: number }[];
@@ -67,11 +67,7 @@ export function AnalyticsView() {
             {kpi('Dish views', data.totals.item_views)}
             {kpi('Searches', data.totals.searches)}
             {kpi('Added to cart', data.totals.cart_adds)}
-            {kpi('WhatsApp taps', data.totals.whatsapp)}
-            {kpi('Call taps', data.totals.calls)}
-            {kpi('Directions taps', data.totals.directions)}
-            {kpi('Instagram taps', data.totals.instagram)}
-            {kpi('Google review taps', data.totals.google_review, 'taps, not reviews')}
+            {kpi('“Explore more” taps', data.totals.explore, 'taps, not visits')}
           </div>
           <section aria-labelledby="daily" className="rounded-2xl border border-stone-200 bg-white p-4">
             <h2 id="daily" className="text-lg font-bold">Menu opens per day</h2>
@@ -97,7 +93,7 @@ export function AnalyticsView() {
               <li>A visitor is one phone browser tab, found by a random code that is not saved on the phone after the tab closes. The same person on another day or another phone counts again.</li>
               <li>Opening or viewing the same thing again within 30 minutes counts once, so refreshing the page does not inflate the numbers.</li>
               <li>Phones that ask websites not to track them are not counted at all, so real use is a bit higher.</li>
-              <li>Taps on WhatsApp, Call, Directions or Google are taps only. They do not show that a message was sent or a review was written.</li>
+              <li>A tap on “Explore more before leaving” is a tap only. It does not show that the other site was opened or used.</li>
               <li>Menu views are not sales. For sales see the Report page. We keep these events for 180 days. Nothing here identifies a person: no name, phone number, address or IP address is stored.</li>
             </ul>
           </div>
