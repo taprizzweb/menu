@@ -431,3 +431,32 @@ describe('audit log viewer', () => {
     expect((await call<any[]>(w.A.owner, 'mgr_get_audit', [10000])).length).toBeLessThanOrEqual(200);
   });
 });
+
+describe('public profile', () => {
+  const args = (o: Record<string, string> = {}) => {
+    const v = { tagline: 'Best chai in town', description: 'Family run since 1999', logo: '', banner: '', phone: '919876543210', whatsapp: '919876543210', address: 'MI Road, Jaipur', hours: 'Daily 11 am - 11 pm', instagram: 'https://www.instagram.com/tattoo.cafe', ...o };
+    return [v.tagline, v.description, v.logo, v.banner, v.phone, v.whatsapp, v.address, v.hours, v.instagram];
+  };
+  it('only the owner can change it; the guest menu then shows exactly the public fields', async () => {
+    expect((await err(w.A.manager, 'mgr_update_profile', args()))?.code).toBe('GM011');
+    expect((await err(w.A.waiter, 'mgr_update_profile', args()))?.code).toBe('GM011');
+    expect(await err(w.A.owner, 'mgr_update_profile', args({ logo: `${w.A.rid}/${randomUUID()}.webp` }))).toBeNull();
+    const menu = (await db.as<any>('service_role', null, `select public.guest_get_menu($1, null) m`, [w.A.slug]))[0].m;
+    expect(menu.restaurant).toMatchObject({ tagline: 'Best chai in town', phone: '919876543210', whatsapp: '919876543210', address: 'MI Road, Jaipur', instagram_url: 'https://www.instagram.com/tattoo.cafe' });
+    expect(menu.restaurant.logo_path).toContain(w.A.rid);
+    expect(Object.keys(menu.restaurant).sort()).toEqual(['accent', 'address', 'banner_path', 'description', 'hours_text', 'instagram_url', 'logo_path', 'name', 'phone', 'review_url', 'slug', 'tagline', 'whatsapp']);
+    const settings = await call<any>(w.A.manager, 'mgr_get_settings');
+    expect(settings).toMatchObject({ tagline: 'Best chai in town', id: w.A.rid });
+  });
+  it('another restaurant is untouched and bad values are refused', async () => {
+    const [b] = await db.admin<any>(`select tagline, phone from public.restaurants where id = $1`, [w.B.rid]);
+    expect(b).toMatchObject({ tagline: null, phone: null });
+    expect((await err(w.A.owner, 'mgr_update_profile', args({ phone: '123' })))?.code).toBe('GM015');
+    expect((await err(w.A.owner, 'mgr_update_profile', args({ instagram: 'https://evil.example/x' })))?.code).toBe('GM015');
+    expect((await err(w.A.owner, 'mgr_update_profile', args({ logo: `${w.B.rid}/${randomUUID()}.webp` })))?.code).toBe('GM015');
+    expect((await err(w.A.owner, 'mgr_update_profile', args({ banner: `${w.A.rid}/../x.webp` })))?.code).toBe('GM015');
+    expect(await err(w.A.owner, 'mgr_update_profile', args({ tagline: '', description: '', phone: '', whatsapp: '', address: '', hours: '', instagram: '' }))).toBeNull();
+    const [r] = await db.admin<any>(`select tagline, phone, instagram_url from public.restaurants where id = $1`, [w.A.rid]);
+    expect(r).toMatchObject({ tagline: null, phone: null, instagram_url: null });
+  });
+});

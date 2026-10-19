@@ -3,18 +3,19 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Alert, Notice, btnPrimary } from '@/components/guest/ui';
 import { ACCENTS, type AccentKey } from '@/lib/accent';
+import { ProfileForm, type Profile } from './ProfileForm';
 import { dashPost, errText, fmtDateTime, inputCls, useDashData } from './api';
 
-interface Settings { name: string; slug: string; review_url: string | null; accent: AccentKey; amber_minutes: number; red_minutes: number; plan: string; paid_until: string | null; status: string }
+interface Settings extends Profile { name: string; slug: string; review_url: string | null; accent: AccentKey; amber_minutes: number; red_minutes: number; plan: string; paid_until: string | null; status: string }
 
-export function SettingsForm({ canEdit }: { canEdit: boolean }) {
+export function SettingsForm({ canEdit, supabase, imageBase }: { canEdit: boolean; supabase: { url: string; anonKey: string }; imageBase: string }) {
   const { data, error } = useDashData<Settings>('settings');
   if (error) return <Alert>{error}</Alert>;
   if (!data) return <p className="text-stone-700">Loading…</p>;
-  return <Form s={data} canEdit={canEdit} />;
+  return <Form s={data} canEdit={canEdit} supabase={supabase} imageBase={imageBase} />;
 }
 
-function Form({ s, canEdit }: { s: Settings; canEdit: boolean }) {
+function Form({ s, canEdit, supabase, imageBase }: { s: Settings; canEdit: boolean; supabase: { url: string; anonKey: string }; imageBase: string }) {
   const router = useRouter();
   const [f, setF] = useState({ name: s.name, review: s.review_url ?? '', accent: s.accent, amber: String(s.amber_minutes), red: String(s.red_minutes) });
   const [busy, setBusy] = useState(false);
@@ -68,6 +69,7 @@ function Form({ s, canEdit }: { s: Settings; canEdit: boolean }) {
         {ok && <Notice>Settings saved.</Notice>}
         {canEdit && <button type="submit" disabled={busy} className={`${btnPrimary} w-full sm:w-auto`}>Save settings</button>}
       </form>
+      <ProfileForm p={s} canEdit={canEdit} supabase={supabase} imageBase={imageBase} />
       <dl className="mt-6 grid gap-2 rounded-2xl border border-stone-200 bg-white p-4 text-sm sm:grid-cols-2">
         <div><dt className="font-semibold">Guest menu address</dt><dd className="break-all text-stone-800">/{s.slug}</dd></div>
         <div><dt className="font-semibold">Plan</dt><dd className="text-stone-800 capitalize">{s.plan}</dd></div>

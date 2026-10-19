@@ -47,6 +47,11 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
   'table-save': { method: 'POST', rpc: 'mgr_save_table', schema: S.tableSave, args: (b) => ({ p_id: b.id, p_label: b.label, p_active: b.active }), result: () => ({ ok: true }) },
   'tables-create': { method: 'POST', rpc: 'mgr_create_tables', schema: S.tablesCreate, args: (b) => ({ p_from: b.from, p_to: b.to }), result: (n: number) => ({ created: n }) },
   'table-rotate': { method: 'POST', rpc: 'mgr_rotate_table_token', schema: S.idOnly, args: (b) => ({ p_table_id: b.id }), result: () => ({ ok: true }) },
+  'profile-save': {
+    method: 'POST', rpc: 'mgr_update_profile', schema: S.profileSave,
+    args: (b) => ({ p_tagline: b.tagline, p_description: b.description, p_logo: b.logo_path, p_banner: b.banner_path, p_phone: b.phone, p_whatsapp: b.whatsapp, p_address: b.address, p_hours: b.hours_text, p_instagram: b.instagram_url }),
+    result: () => ({ ok: true }),
+  },
   'settings-save': {
     method: 'POST', rpc: 'mgr_update_settings', schema: S.settingsSave,
     args: (b) => ({ p_name: b.name, p_review_url: b.review_url || null, p_accent: b.accent, p_amber: b.amber_minutes, p_red: b.red_minutes }),

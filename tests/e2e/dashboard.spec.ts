@@ -299,6 +299,36 @@ test.describe('settings', () => {
       await q(`update public.restaurants set name = $1, accent = $2, amber_minutes = $3, red_minutes = $4, review_url = $5 where slug = 'spice-garden'`, [orig!.name, orig!.accent, orig!.amber_minutes, orig!.red_minutes, orig!.review_url]);
     }
   });
+  test('owner fills in the public profile with a logo; the guest menu shows the identity and only the buttons that were filled in', async ({ page }) => {
+    await loginAs(page, 'owner', '/dash/settings');
+    await page.goto('/spice-garden');
+    await expect(page.getByRole('link', { name: 'Call' })).toHaveCount(0);
+    await page.goto('/dash/settings');
+    try {
+      await page.getByLabel('Choose logo').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: await bigPng(page) });
+      await expect(page.getByAltText('Current logo')).toBeVisible();
+      await page.getByLabel('Short tagline').fill('Garden-fresh North Indian');
+      await page.getByLabel('Phone number').fill('98765 43210');
+      await page.getByLabel('WhatsApp number').fill('98765 43210');
+      await page.getByLabel('Address').fill('12 Garden Road, Jaipur');
+      await page.getByLabel('Opening hours').fill('Daily 11 am - 11 pm');
+      await page.getByLabel('Instagram').fill('@spicegarden');
+      await page.getByRole('button', { name: 'Save profile' }).click();
+      await expect(page.getByText('Profile saved.')).toBeVisible();
+      await page.goto('/spice-garden');
+      await expect(page.getByText('Garden-fresh North Indian')).toBeVisible();
+      await expect(page.getByAltText('Spice Garden logo')).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Call' })).toHaveAttribute('href', 'tel:+919876543210');
+      const wa = await page.getByRole('link', { name: 'WhatsApp' }).getAttribute('href');
+      expect(wa).toMatch(/^https:\/\/wa\.me\/919876543210\?text=Hello%20Spice%20Garden/);
+      await expect(page.getByRole('link', { name: 'Directions' })).toHaveAttribute('href', /google\.com\/maps\/search\/\?api=1&query=Spice%20Garden%2012%20Garden%20Road/);
+      await expect(page.getByRole('link', { name: 'Instagram' })).toHaveAttribute('href', 'https://www.instagram.com/spicegarden');
+      await expect(page.getByText('Daily 11 am - 11 pm')).toBeVisible();
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-guest-profile.png` });
+    } finally {
+      await q(`update public.restaurants set tagline = null, description = null, logo_path = null, banner_path = null, phone = null, whatsapp = null, address = null, hours_text = null, instagram_url = null where slug = 'spice-garden'`);
+    }
+  });
   test('a manager sees settings read-only', async ({ page }) => {
     await loginAs(page, 'manager', '/dash/settings');
     await expect(page.getByText('Only the owner can change settings')).toBeVisible();

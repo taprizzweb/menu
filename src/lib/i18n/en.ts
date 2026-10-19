@@ -3,6 +3,16 @@ export const en = {
   'app.table': 'Table {label}',
   'app.privacy': 'Privacy',
   'app.poweredBy': 'Powered by GoToMenu',
+  // restaurant profile / hero
+  'hero.call': 'Call',
+  'hero.whatsapp': 'WhatsApp',
+  'hero.directions': 'Directions',
+  'hero.instagram': 'Instagram',
+  'hero.review': 'Review us on Google',
+  'hero.reviewNote': 'Opens Google in a new tab. Your review is written and published on Google, not here.',
+  'hero.hours': 'Opening hours',
+  'hero.logoAlt': '{name} logo',
+  'hero.whatsappMessage': 'Hello {name}, I have a question about your menu.',
   // menu
   'menu.search': 'Search the menu',
   'menu.searchPlaceholder': 'Search dishes',

@@ -9,6 +9,7 @@ import { errorMessageKey, t } from '@/lib/i18n';
 import { CartSheet } from './CartSheet';
 import { BillSheet, WaiterSheet } from './HelpSheets';
 import { MenuView } from './MenuView';
+import { RestaurantHero } from './RestaurantHero';
 import { StatusView, ThankYou } from './StatusView';
 import { forgetIdempotencyKey, idempotencyKeyFor, useCart, useLiveStatus } from './hooks';
 import { IconBell, IconCart, IconList, IconReceipt, Notice, Alert } from './ui';
@@ -130,14 +131,7 @@ export function GuestApp({
 
   return (
     <div data-accent={accent} className="min-h-dvh pb-44">
-      <header className="mx-auto flex max-w-2xl items-start justify-between gap-3 px-4 pb-3 pt-5">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-extrabold leading-tight">{menu.restaurant.name}</h1>
-          {menu.table_label && (
-            <p className="mt-2 inline-flex rounded-full border-2 border-accent bg-white px-3 py-0.5 text-sm font-bold text-accent">{t('app.table', { label: menu.table_label })}</p>
-          )}
-        </div>
-      </header>
+      <RestaurantHero r={menu.restaurant} imageBase={imageBase} tableLabel={menu.table_label} t={t} />
 
       {!online && <div className="mx-auto max-w-2xl px-4 pb-2"><Notice>{t('state.offline')}</Notice></div>}
       {!tokenValid && (
