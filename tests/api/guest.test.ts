@@ -13,6 +13,7 @@ import { POST as orderPOST } from '@/app/api/guest/order/route';
 import { GET as statusGET } from '@/app/api/guest/status/route';
 import { POST as requestPOST } from '@/app/api/guest/request/route';
 import { GET as reviewGET } from '@/app/api/guest/review/route';
+import { POST as eventPOST } from '@/app/api/guest/event/route';
 import { GET as healthGET } from '@/app/api/health/route';
 
 let db: TestDb;
@@ -374,5 +375,34 @@ describe('server-only secrets never appear in responses', () => {
     const res = await orderPOST(req('/api/guest/order', orderBody(t)));
     const all = JSON.stringify(await json(res)) + [...res.headers.entries()].map(([k, v]) => (k === 'set-cookie' ? '' : v)).join('');
     for (const s of [SECRET, process.env.SUPABASE_SERVICE_ROLE_KEY!, process.env.IP_HASH_SALT!]) expect(all).not.toContain(s);
+  });
+});
+
+describe('POST /api/guest/event (menu analytics)', () => {
+  const visit = randomUUID();
+  const send = (body: unknown, o: Record<string, unknown> = {}) => eventPOST(req('/api/guest/event', body, { ip: uniqueIp(), ...o }));
+  it('records a valid event and always answers ok without setting any cookie', async () => {
+    const res = await send({ slug: w.A.slug, visit, event: 'menu_opened' });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ ok: true });
+    expect(res.headers.getSetCookie()).toEqual([]);
+    const rows = await db.admin<{ event: string }>(`select event from public.menu_events where visit_id = $1`, [visit]);
+    expect(rows.map((r) => r.event)).toEqual(['menu_opened']);
+    // a refresh (same visit, same event) is accepted but not counted again
+    expect((await send({ slug: w.A.slug, visit, event: 'menu_opened' })).status).toBe(200);
+    expect(await db.admin(`select 1 from public.menu_events where visit_id = $1`, [visit])).toHaveLength(1);
+  });
+  it('refuses foreign origins, unknown events, extra fields and malformed ids', async () => {
+    expect((await send({ slug: w.A.slug, visit, event: 'menu_opened' }, { origin: 'https://evil.example' })).status).toBe(403);
+    expect((await send({ slug: w.A.slug, visit, event: 'drop_table' })).status).toBe(400);
+    expect((await send({ slug: w.A.slug, visit, event: 'search', extra: 1 })).status).toBe(400);
+    expect((await send({ slug: w.A.slug, visit: 'nope', event: 'search' })).status).toBe(400);
+    expect((await send({ slug: 'No Such!', visit, event: 'search' })).status).toBe(400);
+  });
+  it('an unknown restaurant records nothing and reveals nothing', async () => {
+    const v = randomUUID();
+    const res = await send({ slug: 'no-such-cafe', visit: v, event: 'menu_opened' });
+    expect(res.status).toBe(200);
+    expect(await db.admin(`select 1 from public.menu_events where visit_id = $1`, [v])).toHaveLength(0);
   });
 });

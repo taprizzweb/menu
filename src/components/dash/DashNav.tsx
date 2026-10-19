@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/dash/staff', label: 'Staff' },
   { href: '/dash/settings', label: 'Settings' },
   { href: '/dash/report', label: 'Report' },
+  { href: '/dash/analytics', label: 'Analytics' },
   { href: '/dash/audit', label: 'Activity log' },
 ];
 

@@ -3,6 +3,8 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { formatPaise } from '@/lib/money';
 import type { MenuCategory, MenuItem } from '@/lib/guest/types';
 import type { Translator } from '@/lib/i18n';
+import type { TrackIds } from '@/lib/guest/analytics';
+import type { MenuEvent } from '@/lib/schemas/guest';
 import { DietMark, IconMinus, IconPlus, IconSearch, Sheet, SpiceDots } from './ui';
 
 type Filter = 'veg' | 'jain' | 'bestseller';
@@ -157,12 +159,16 @@ function DetailsSheet({ item, o, onClose }: { item: MenuItem | null; o: Ordering
 
 const initial = (s: string) => s.trim().charAt(0).toUpperCase();
 
-export function MenuView({ categories, t, canOrder, imageBase, qtyOf, onAdd, onSet }: Ordering & { categories: MenuCategory[] }) {
+export function MenuView({ categories, t, canOrder, imageBase, qtyOf, onAdd, onSet, onTrack }: Ordering & { categories: MenuCategory[]; onTrack?: (e: MenuEvent, ids?: TrackIds) => void }) {
   const o: Ordering = { t, canOrder, imageBase, qtyOf, onAdd, onSet };
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
   const [active, setActive] = useState<string | null>(null);
-  const [detail, setDetail] = useState<MenuItem | null>(null);
+  const [detail, setDetailState] = useState<MenuItem | null>(null);
+  const setDetail = (i: MenuItem | null) => {
+    setDetailState(i);
+    if (i) onTrack?.('item_viewed', { item_id: i.id });
+  };
   const barRef = useRef<HTMLDivElement>(null);
 
   const shown = useMemo(() => {
@@ -216,7 +222,16 @@ export function MenuView({ categories, t, canOrder, imageBase, qtyOf, onAdd, onS
       return n;
     });
 
+  // a search counts once the guest pauses typing, not on every keystroke
+  useEffect(() => {
+    if (query.trim().length < 2) return;
+    const h = setTimeout(() => onTrack?.('search'), 1200);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
   const jump = (id: string) => {
+    onTrack?.('category_viewed', { category_id: id });
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     document.getElementById(`cat-${id}`)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   };

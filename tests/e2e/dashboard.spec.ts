@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { completeSignIn, q } from './helpers';
+import { completeSignIn, newTable, q } from './helpers';
 import { DEMO_PASSWORD } from '../../supabase/tests/helpers/local-supabase';
 
 type AxePage = ConstructorParameters<typeof AxeBuilder>[0]['page'];
@@ -337,6 +337,28 @@ test.describe('settings', () => {
   });
 });
 
+test.describe('analytics', () => {
+  test('a guest visit shows up as a menu open and a table QR scan; the numbers are explained and can be downloaded', async ({ page }) => {
+    const t = await newTable();
+    const beacon = page.waitForResponse((r) => r.url().includes('/api/guest/event') && r.request().method() === 'POST');
+    await page.goto(`/spice-garden?k=${t.token}`);
+    expect((await beacon).status()).toBe(200);
+    await page.getByRole('navigation', { name: 'Menu categories' }).getByRole('button').first().click();
+    await page.waitForTimeout(500);
+    await loginAs(page, 'owner', '/dash/analytics');
+    await expect(page.getByRole('heading', { level: 1, name: 'Menu analytics' })).toBeVisible();
+    await expect(page.getByText(`Table ${t.label}`)).toBeVisible();
+    await expect(page.getByText('How to read these numbers')).toBeVisible();
+    const opens = page.locator('div', { has: page.getByText('Menu opens', { exact: true }) }).last();
+    await expect(opens).toContainText(/[1-9]/);
+    const dl = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download as CSV' }).click();
+    expect((await dl).suggestedFilename()).toBe('menu-analytics-7d.csv');
+    await page.getByRole('button', { name: 'Last 30 days' }).click();
+    await expect(page.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
 test.describe('report and activity log', () => {
   test('report switches ranges and the activity log lists who did what', async ({ page }) => {
     await loginAs(page, 'owner', '/dash/report');
@@ -353,7 +375,7 @@ test.describe('report and activity log', () => {
 });
 
 test.describe('quality', () => {
-  for (const [name, path] of [['menu', '/dash/menu'], ['tables', '/dash/tables'], ['staff', '/dash/staff'], ['settings', '/dash/settings'], ['report', '/dash/report'], ['activity log', '/dash/audit']] as const) {
+  for (const [name, path] of [['menu', '/dash/menu'], ['tables', '/dash/tables'], ['staff', '/dash/staff'], ['settings', '/dash/settings'], ['report', '/dash/report'], ['analytics', '/dash/analytics'], ['activity log', '/dash/audit']] as const) {
     test(`the ${name} page has no accessibility violations and every control is at least 44px`, async ({ page }) => {
       await loginAs(page, 'owner', path);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();

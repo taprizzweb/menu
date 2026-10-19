@@ -25,6 +25,7 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
   staff: { method: 'GET', rpc: 'mgr_get_staff', args: none },
   tables: { method: 'GET', rpc: 'mgr_get_table_tokens', args: none, result: (rows: unknown[]) => ({ tables: rows }) },
   report: { method: 'GET', rpc: 'mgr_report', schema: S.reportQuery, args: (q: { range: string }) => ({ p_range: q.range }) },
+  analytics: { method: 'GET', rpc: 'mgr_analytics', schema: S.analyticsQuery, args: (q: { range: string }) => ({ p_range: q.range }) },
   audit: { method: 'GET', rpc: 'mgr_get_audit', schema: S.auditQuery, args: (q: { limit: number; before?: number }) => ({ p_limit: q.limit, p_before: q.before ?? null }), result: (rows: unknown[]) => ({ entries: rows }) },
 
   // ---- menu

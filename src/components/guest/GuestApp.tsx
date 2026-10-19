@@ -6,6 +6,8 @@ import { formatPaise } from '@/lib/money';
 import { ApiFailure, askBill, callWaiter, placeOrder } from '@/lib/guest/client';
 import type { MenuData, MenuItem, PayMode, WaiterReason } from '@/lib/guest/types';
 import { errorMessageKey, t } from '@/lib/i18n';
+import { trackEvent, type TrackIds } from '@/lib/guest/analytics';
+import type { MenuEvent } from '@/lib/schemas/guest';
 import { CartSheet } from './CartSheet';
 import { BillSheet, WaiterSheet } from './HelpSheets';
 import { MenuView } from './MenuView';
@@ -37,6 +39,17 @@ export function GuestApp({
   const [online, setOnline] = useState(true);
   const placingRef = useRef(false);
   const autoShown = useRef(false);
+
+  const track = useCallback(
+    (event: MenuEvent, ids?: TrackIds) => trackEvent(slug, tokenValid ? token : null, event, ids),
+    [slug, token, tokenValid],
+  );
+  useEffect(() => {
+    track('menu_opened');
+    if (tokenValid) track('qr_landing');
+    // once per page load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const live = useLiveStatus(slug, hasSession && tokenValid);
   // Ignore a session that belongs to a different table than the QR just scanned.
@@ -146,9 +159,9 @@ export function GuestApp({
         ) : showStatus ? (
           <StatusView data={status} t={t} onAddMore={() => setView('menu')} />
         ) : (
-          <MenuView categories={categories} t={t} canOrder={canOrder} imageBase={imageBase} qtyOf={cart.qtyOf} onAdd={cart.add} onSet={cart.setQty} />
+          <MenuView categories={categories} t={t} canOrder={canOrder} imageBase={imageBase} qtyOf={cart.qtyOf} onAdd={(id) => { track('cart_add', { item_id: id }); cart.add(id); }} onSet={cart.setQty} onTrack={track} />
         )}
-        {!showStatus && <RestaurantInfo r={menu.restaurant} t={t} />}
+        {!showStatus && <RestaurantInfo r={menu.restaurant} t={t} onTrack={track} />}
       </main>
 
       {canOrder && !(showStatus && closed) && (

@@ -15,9 +15,13 @@ Written when the owner asked to grow GoToMenu from a table-ordering app into a f
 ## Added in this step (Phase 1, slice 1)
 Public profile: tagline, about, logo, banner, phone, WhatsApp, address, opening hours text, Instagram. The public menu shows a hero (banner, logo, name) and buttons only for what the owner filled in: Call, WhatsApp (pre-filled, correctly encoded message), Directions (Google Maps search), Instagram, "Review us on Google" (with a note that the review is written on Google). Migration `0017_restaurant_profile.sql`.
 
+## Added after that (look and feel, analytics)
+- Public menu redesign: photo hero, "Find us" info card, category thumbnails, image-led dish cards, favourites strip, dish details sheet.
+- Measured analytics (migration `0018_menu_analytics.sql`): events recorded by a service-only function (random per-tab id, no IP or user agent, rate-limited, de-duplicated, purged after 180 days, "Do Not Track" respected). Owners and managers see totals, daily opens, top dishes, categories, table scans and button taps under Dashboard > Analytics, with a CSV download and a plain explanation of the limits.
+
 ## Not built yet (recommended order)
 1. **Phase 1 slice 2: look and feel.** Several design templates (minimal, dark, warm, elegant, bright), dish detail view, featured section, category images, image fallbacks and loading skeletons. Needs real food photos from restaurants to look premium.
-2. **Phase 1 slice 3: measured analytics.** Event table (menu opened, QR landing, category, item, search, WhatsApp click, Google click), daily sessions with de-duplication, 90-day retention, dashboard overview with date filter, CSV export. Metrics will be labelled "measured" and explained.
+2. ~~Analytics~~ done (see above). Still open: traffic source (needs a `?src=` convention on QR links), weekly trend view.
 3. **Phase 2:** NFC / QR card manager (`/r/{id}` redirect with an allow-list so it cannot become an open redirect, scan counts), feedback module (rating, categories, comment, export, kept separate from Google), promotions with start / end dates, item variants and add-ons, plan entitlements and limits editable by the platform admin.
 4. **Phase 3:** payments and subscriptions (needs a provider account; Razorpay is the usual choice in India), AI description helper (needs an API key and a monthly budget), multi-location, additional languages (Hindi fields already exist in the database; owner-supplied text only).
 

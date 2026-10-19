@@ -1,5 +1,7 @@
 import type { MenuData } from '@/lib/guest/types';
+import type { TrackIds } from '@/lib/guest/analytics';
 import type { Translator } from '@/lib/i18n';
+import type { MenuEvent } from '@/lib/schemas/guest';
 import { mapsLink, telLink, whatsappLink } from '@/lib/profile';
 
 type R = MenuData['restaurant'];
@@ -53,7 +55,7 @@ export function RestaurantHero({ r, imageBase, tableLabel, t, compact = false }:
 const tile = 'flex min-h-14 items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-900 hover:bg-stone-50';
 
 /** "Find us": about text, address, hours and the contact actions the owner configured, kept out of the way of the menu. */
-export function RestaurantInfo({ r, t }: { r: R; t: Translator }) {
+export function RestaurantInfo({ r, t, onTrack }: { r: R; t: Translator; onTrack?: (e: MenuEvent, ids?: TrackIds) => void }) {
   const hasActions = r.phone || r.whatsapp || r.address || r.instagram_url || r.review_url;
   if (!r.description && !r.address && !r.hours_text && !hasActions) return null;
   return (
@@ -69,11 +71,11 @@ export function RestaurantInfo({ r, t }: { r: R; t: Translator }) {
         )}
         {hasActions && (
           <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {r.phone && <li><a className={tile} href={telLink(r.phone)}><IPhone />{t('hero.call')}</a></li>}
-            {r.whatsapp && <li><a className={tile} href={whatsappLink(r.whatsapp, t('hero.whatsappMessage', { name: r.name }))} target="_blank" rel="noopener noreferrer"><IChat />{t('hero.whatsapp')}</a></li>}
-            {r.address && <li><a className={tile} href={mapsLink(r.name, r.address)} target="_blank" rel="noopener noreferrer"><IPin />{t('hero.directions')}</a></li>}
-            {r.instagram_url && <li><a className={tile} href={r.instagram_url} target="_blank" rel="noopener noreferrer"><IInsta />{t('hero.instagram')}</a></li>}
-            {r.review_url && <li><a className={tile} href={r.review_url} target="_blank" rel="noopener noreferrer" aria-describedby="review-note"><IStar />{t('hero.review')}</a></li>}
+            {r.phone && <li><a className={tile} href={telLink(r.phone)} onClick={() => onTrack?.('call_click')}><IPhone />{t('hero.call')}</a></li>}
+            {r.whatsapp && <li><a className={tile} href={whatsappLink(r.whatsapp, t('hero.whatsappMessage', { name: r.name }))} target="_blank" rel="noopener noreferrer" onClick={() => onTrack?.('whatsapp_click')}><IChat />{t('hero.whatsapp')}</a></li>}
+            {r.address && <li><a className={tile} href={mapsLink(r.name, r.address)} target="_blank" rel="noopener noreferrer" onClick={() => onTrack?.('directions_click')}><IPin />{t('hero.directions')}</a></li>}
+            {r.instagram_url && <li><a className={tile} href={r.instagram_url} target="_blank" rel="noopener noreferrer" onClick={() => onTrack?.('instagram_click')}><IInsta />{t('hero.instagram')}</a></li>}
+            {r.review_url && <li><a className={tile} href={r.review_url} target="_blank" rel="noopener noreferrer" aria-describedby="review-note" onClick={() => onTrack?.('google_review_click')}><IStar />{t('hero.review')}</a></li>}
           </ul>
         )}
         {r.review_url && <p id="review-note" className="mt-2 text-xs text-stone-700">{t('hero.reviewNote')}</p>}

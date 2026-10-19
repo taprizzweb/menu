@@ -460,3 +460,52 @@ describe('public profile', () => {
     expect(r).toMatchObject({ tagline: null, phone: null, instagram_url: null });
   });
 });
+
+describe('menu analytics', () => {
+  const visit = randomUUID();
+  const rec = (event: string, o: { token?: string | null; item?: string | null; cat?: string | null; slug?: string; visit?: string } = {}) =>
+    svc<boolean>('guest_record_event', [o.slug ?? w.A.slug, o.token ?? null, o.visit ?? visit, event, o.item ?? null, o.cat ?? null, 'iphash']);
+  const a = (uid: string, range = '7d') => call<any>(uid, 'mgr_analytics', [range]);
+
+  it('records events, counts a refresh once, and ignores unknown or foreign references', async () => {
+    const before = (await a(w.A.owner)).totals;
+    expect(await rec('menu_opened')).toBe(true);
+    expect(await rec('menu_opened')).toBe(false); // same visit within 30 minutes: a refresh, not a new open
+    expect(await rec('menu_opened', { visit: randomUUID() })).toBe(true);
+    expect(await rec('item_viewed', { item: w.A.paneer })).toBe(true);
+    expect(await rec('item_viewed', { item: w.A.paneer })).toBe(false);
+    expect(await rec('item_viewed', { item: w.B.paneer })).toBe(false); // foreign item: reference dropped, nothing to count
+    expect(await rec('category_viewed', { cat: w.A.catId })).toBe(true);
+    expect(await rec('search')).toBe(true);
+    expect(await rec('whatsapp_click')).toBe(true);
+    expect(await svcErr('guest_record_event', [w.A.slug, null, visit, 'not_an_event', null, null, 'iphash'])).not.toBeNull(); // the table only accepts known events
+    const t = (await a(w.A.owner)).totals;
+    expect(t.menu_opens - before.menu_opens).toBe(2);
+    expect(t.item_views - before.item_views).toBe(1);
+    expect(t.searches - before.searches).toBe(1);
+    expect(t.whatsapp - before.whatsapp).toBe(1);
+    const top = await a(w.A.owner);
+    expect(top.top_items[0]).toMatchObject({ name: 'Paneer Butter Masala', views: 1 });
+    expect(top.categories[0].views).toBe(1);
+  });
+  it('qr_landing needs a real table token and is counted per table', async () => {
+    const [tb] = await db.admin<any>(`select qr_token, label from public.dining_tables where restaurant_id = $1 and active order by created_at limit 1`, [w.A.rid]);
+    expect(await rec('qr_landing', { token: 'f'.repeat(64), visit: randomUUID() })).toBe(false);
+    expect(await rec('qr_landing', { token: tb.qr_token, visit: randomUUID() })).toBe(true);
+    const r = await a(w.A.manager);
+    expect(r.tables.find((x: any) => x.label === tb.label)?.scans).toBeGreaterThanOrEqual(1);
+    expect(r.daily.length).toBe(7);
+  });
+  it('is private to the restaurant and to owner / manager; suspended restaurants record nothing; old events are purged', async () => {
+    expect(((await a(w.B.owner)).totals).menu_opens).toBe(0);
+    expect((await err(w.A.waiter, 'mgr_analytics', ['7d']))?.code).toBe('GM011');
+    expect((await err(w.A.owner, 'mgr_analytics', ['1y']))?.code).toBe('GM015');
+    expect(await db.asErr('authenticated', w.A.owner, `select count(*) from public.menu_events`, [] as never)).not.toBeNull(); // no direct reads
+    await db.admin(`update public.restaurants set status = 'suspended' where id = $1`, [w.B.rid]);
+    expect(await rec('menu_opened', { slug: w.B.slug, visit: randomUUID() })).toBe(false);
+    await db.admin(`update public.restaurants set status = 'active' where id = $1`, [w.B.rid]);
+    await db.admin(`insert into public.menu_events (restaurant_id, visit_id, event, created_at) values ($1, $2, 'menu_opened', now() - interval '200 days')`, [w.A.rid, randomUUID()]);
+    await rec('search', { visit: randomUUID() });
+    expect((await db.admin<any>(`select count(*)::int n from public.menu_events where created_at < now() - interval '180 days'`))[0].n).toBe(0);
+  });
+});

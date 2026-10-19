@@ -80,6 +80,7 @@ export const staffAdd = z.object({ email: z.string().trim().toLowerCase().email(
 export const staffUpdate = z.object({ user_id: uuid, name: name(60), role: z.enum(['manager', 'waiter', 'kitchen']), active: z.boolean() }).strict();
 export const staffReset = z.object({ user_id: uuid }).strict();
 
+export const analyticsQuery = z.object({ range: z.enum(['7d', '30d', '90d']).default('7d') });
 export const reportQuery = z.object({ range: z.enum(['today', '7d', '30d']).default('today') });
 export const auditQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50), before: z.coerce.number().int().positive().optional() });
 
