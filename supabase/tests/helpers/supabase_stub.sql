@@ -3,9 +3,9 @@
 
 -- Roles are cluster-wide and test files run in parallel, so tolerate "already exists" races.
 do $$ begin
-  begin create role anon nologin noinherit; exception when duplicate_object then null; end;
-  begin create role authenticated nologin noinherit; exception when duplicate_object then null; end;
-  begin create role service_role nologin noinherit bypassrls; exception when duplicate_object then null; end;
+  begin create role anon nologin noinherit; exception when duplicate_object or unique_violation then null; end;
+  begin create role authenticated nologin noinherit; exception when duplicate_object or unique_violation then null; end;
+  begin create role service_role nologin noinherit bypassrls; exception when duplicate_object or unique_violation then null; end;
 end $$;
 
 create schema if not exists auth;
