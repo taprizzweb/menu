@@ -23,6 +23,7 @@ async function asAdmin(page: Page, path = '/admin') {
 }
 const suffix = () => `${test.info().project.name === 'mobile' ? 'm' : 't'}${Math.random().toString(36).slice(2, 7)}`;
 const card = (page: Page, slug: string) => page.getByTestId(`restaurant-${slug}`);
+const card_ = card;
 
 test.describe('/admin access', () => {
   test('signed-out visitors are sent to sign-in; restaurant owners cannot even tell /admin exists', async ({ page }) => {
@@ -149,7 +150,7 @@ test.describe('platform admin', () => {
     await dialog(page).getByRole('button', { name: 'I have saved it' }).click();
     await page.getByLabel(`Logins of Cafe ${slug}`).click();
     await dialog(page).getByRole('button', { name: 'Add login' }).click();
-    await dialog(page).getByLabel('Name').fill('Kim Kitchen');
+    await dialog(page).getByLabel('Name', { exact: true }).fill('Kim Kitchen');
     await dialog(page).getByLabel('Email', { exact: true }).fill(`${slug}@kitchen.test`);
     await dialog(page).getByLabel('Role').selectOption('kitchen');
     await dialog(page).getByRole('button', { name: 'Create login' }).click();
@@ -186,6 +187,126 @@ test.describe('platform admin', () => {
     }
   });
 
+  test('plans page: the admin writes plans (name, points, prices); one is assigned with its own price and dates, shown on the card and in the owner\'s dashboard', async ({ page, browser }) => {
+    const slug = `e2e-${suffix()}`;
+    const planName = `Signature ${suffix()}`;
+    await asAdmin(page, '/admin/plans');
+    await page.getByRole('button', { name: 'Add plan' }).click();
+    await dialog(page).getByLabel('Plan name').fill(planName);
+    await dialog(page).getByLabel('Setup (₹)').fill('15000');
+    await dialog(page).getByLabel('Per month (₹)').fill('2499');
+    await dialog(page).getByLabel('Per year (₹)').fill('24,999');
+    await dialog(page).getByLabel(/Plan points/).fill('Premium menu\n\nQR ordering\nSmart QR link');
+    await dialog(page).getByRole('button', { name: 'Save plan' }).click();
+    const card = page.getByTestId(`plan-${planName}`);
+    await expect(card).toContainText('₹15,000');
+    await expect(card).toContainText('₹2,499');
+    await expect(card).toContainText('₹24,999');
+    await expect(card.getByRole('listitem')).toHaveCount(3);
+    await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-admin-plans.png` });
+
+    // a restaurant to assign it to
+    await page.goto('/admin');
+    await page.getByRole('button', { name: 'Create restaurant' }).click();
+    await dialog(page).getByLabel('Restaurant name').fill(`Cafe ${slug}`);
+    await dialog(page).getByLabel('Web address (after the domain)').fill(slug);
+    await dialog(page).getByLabel('Owner name').fill('Olive');
+    await dialog(page).getByLabel('Owner email').fill(`${slug}@owner.test`);
+    await dialog(page).getByRole('button', { name: 'Create restaurant and owner login' }).click();
+    await dialog(page).getByRole('button', { name: 'I have saved it' }).click();
+    const c = card_(page, slug);
+    await c.getByRole('button', { name: /Plan and billing for/ }).click();
+    await dialog(page).locator('select').first().selectOption({ label: planName });
+    await expect(dialog(page).getByLabel('Price (₹)')).toHaveValue('2499'); // filled from the plan, still editable
+    await expect(dialog(page).getByLabel('Setup fee (₹)')).toHaveValue('15000');
+    await dialog(page).getByLabel('Price (₹)').fill('1999'); // this client's own price
+    await dialog(page).getByLabel('Starts on').fill('2026-11-01');
+    await dialog(page).getByRole('button', { name: '+ 1 year' }).click();
+    await expect(dialog(page).getByLabel('Ends on')).toHaveValue('2027-11-01');
+    await dialog(page).getByLabel(/Pause the menu automatically/).check();
+    await dialog(page).getByLabel(/Grace days/).fill('5');
+    await dialog(page).getByLabel(/Note/).fill('Founding client');
+    await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-admin-billing.png` });
+    await dialog(page).getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(c).toContainText(`Plan: ${planName}`);
+    await expect(c).toContainText('₹1,999 per month');
+    await expect(c).toContainText('setup ₹15,000');
+    await expect(c).toContainText('pauses itself after 5 grace days');
+    const row = (await q<any>(`select price_paise, billing_period, setup_fee_paise, auto_pause, grace_days, billing_note from public.restaurants where slug = $1`, [slug]))[0];
+    expect(row).toMatchObject({ price_paise: 199900, billing_period: 'monthly', setup_fee_paise: 1500000, auto_pause: true, grace_days: 5, billing_note: 'Founding client' });
+
+    // a plan in use cannot be deleted
+    await page.goto('/admin/plans');
+    await page.getByRole('button', { name: `Delete plan ${planName}` }).click();
+    await expect(dialog(page).getByRole('button', { name: 'Delete plan' })).toBeDisabled();
+    await dialog(page).getByRole('button', { name: 'Cancel' }).click();
+
+    // the owner sees a warning when the end date is near
+    await q(`update public.restaurants set paid_until = now() + interval '5 days' where slug = $1`, [slug]);
+    const [pw] = await q<{ id: string }>(`select id from auth.users where email = $1`, [`${slug}@owner.test`]);
+    await q(`update auth.users set password = 'OwnerPass#2025x!', app_metadata = '{}'::jsonb where id = $1`, [pw!.id]);
+    const ctx = await browser.newContext(test.info().project.use as never);
+    const p = await ctx.newPage();
+    try {
+      await p.goto('/login');
+      await p.getByLabel('Email').fill(`${slug}@owner.test`);
+      await p.getByLabel('Password').fill('OwnerPass#2025x!');
+      await p.getByRole('button', { name: 'Sign in' }).click();
+      await expect(p).toHaveURL(/\/staff$/);
+      await p.goto('/dash/menu');
+      await expect(p.getByTestId('plan-notice')).toContainText(/Ends in [45] days|ends on/i);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('rename a restaurant and a login, and duplicate a restaurant with its menu', async ({ page }) => {
+    const slug = `e2e-${suffix()}`;
+    await asAdmin(page);
+    await page.getByRole('button', { name: 'Create restaurant' }).click();
+    await dialog(page).getByLabel('Restaurant name').fill(`Cafe ${slug}`);
+    await dialog(page).getByLabel('Web address (after the domain)').fill(slug);
+    await dialog(page).getByLabel('Owner name').fill('Olive');
+    await dialog(page).getByLabel('Owner email').fill(`${slug}@owner.test`);
+    await dialog(page).getByRole('button', { name: 'Create restaurant and owner login' }).click();
+    await dialog(page).getByRole('button', { name: 'I have saved it' }).click();
+    // give it a small menu so the copy has something to copy
+    const [r0] = await q<{ id: string }>(`select id from public.restaurants where slug = $1`, [slug]);
+    const [cat] = await q<{ id: string }>(`insert into public.categories (restaurant_id, name_en) values ($1, 'Starters') returning id`, [r0!.id]);
+    await q(`insert into public.items (restaurant_id, category_id, name_en, price_paise, diet) values ($1, $2, 'Tikka', 28000, 'veg'), ($1, $2, 'Kebab', 24000, 'nonveg')`, [r0!.id, cat!.id]);
+    const c = card_(page, slug);
+
+    await c.getByRole('button', { name: /^Rename Cafe/ }).click();
+    await dialog(page).getByLabel('Restaurant name').fill(`Renamed ${slug}`);
+    await dialog(page).getByRole('button', { name: 'Save name' }).click();
+    await expect(c).toContainText(`Renamed ${slug}`);
+    expect((await q<{ slug: string }>(`select slug from public.restaurants where id = $1`, [r0!.id]))[0]!.slug).toBe(slug); // address unchanged
+
+    await c.getByLabel(/^Logins of/).click();
+    await dialog(page).getByRole('button', { name: 'Rename Olive' }).click();
+    await dialog(page).getByLabel('New name').fill('Olive Owner');
+    await dialog(page).getByRole('button', { name: 'Save name' }).click();
+    await expect(dialog(page)).toContainText('Olive Owner · owner');
+    await dialog(page).getByRole('button', { name: 'Close' }).first().click();
+
+    await c.getByRole('button', { name: /^Duplicate/ }).click();
+    await dialog(page).getByLabel('New restaurant name').fill(`Copy ${slug}`);
+    await dialog(page).getByLabel('New web address').fill(`copy-${slug}`);
+    await dialog(page).getByLabel('New owner name').fill('Cora');
+    await dialog(page).getByLabel('New owner email').fill(`copy-${slug}@owner.test`);
+    await dialog(page).getByRole('button', { name: 'Create the copy' }).click();
+    await expect(dialog(page)).toContainText('shown only once');
+    await dialog(page).getByRole('button', { name: 'I have saved it' }).click();
+    const copy = card_(page, `copy-${slug}`);
+    await expect(copy).toContainText(`Copy ${slug}`);
+    const items = await q<{ name_en: string; price_paise: number }>(`select i.name_en, i.price_paise from public.items i join public.restaurants r on r.id = i.restaurant_id where r.slug = $1 order by i.name_en`, [`copy-${slug}`]);
+    expect(items).toEqual([{ name_en: 'Kebab', price_paise: 24000 }, { name_en: 'Tikka', price_paise: 28000 }]);
+    expect((await q(`select 1 from public.dining_tables t join public.restaurants r on r.id = t.restaurant_id where r.slug = $1`, [`copy-${slug}`])).length).toBe(0);
+    // the copy shows on the public menu
+    await page.goto(`/copy-${slug}`);
+    await expect(page.getByText('Tikka').first()).toBeVisible();
+  });
+
   test('suspends and reactivates, edits plan and payment, shows the activity log, exports data and deletes with a typed confirmation', async ({ page, request }) => {
     const slug = `e2e-${suffix()}`;
     await asAdmin(page);
@@ -204,12 +325,12 @@ test.describe('platform admin', () => {
     await c.getByRole('button', { name: /^Activate/ }).click();
     await expect(c).toContainText('Active');
 
-    await c.getByRole('button', { name: /Plan and payment for/ }).click();
-    await dialog(page).getByLabel('Plan').fill('standard');
-    await dialog(page).getByLabel(/Paid until/).fill('2020-01-31');
-    await dialog(page).getByRole('button', { name: 'Save' }).click();
+    await c.getByRole('button', { name: /Plan and billing for/ }).click();
+    await dialog(page).getByLabel('Plan name shown').fill('standard');
+    await dialog(page).getByLabel('Ends on').fill('2020-01-31');
+    await dialog(page).getByRole('button', { name: 'Save', exact: true }).click();
     await expect(c).toContainText('Plan: standard');
-    await expect(c).toContainText('(overdue)');
+    await expect(c.getByTestId('expiry')).toContainText('Ended');
 
     await c.getByRole('button', { name: /Activity log for/ }).click();
     await expect(dialog(page)).toContainText('restaurant created');

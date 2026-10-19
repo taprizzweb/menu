@@ -251,6 +251,16 @@ export function startLocalSupabase(pool: Pool, port: number, opts: { ttlSeconds?
         files.set(path, file);
         return send(res, 200, { Id: randomUUID(), Key: `menu-images/${path}` }, origin);
       }
+      if (url.pathname === '/storage/v1/object/copy' && req.method === 'POST') {
+        if (bearer !== LOCAL_SERVICE_KEY) return send(res, 403, { statusCode: '403', error: 'Unauthorized', message: 'service key required' }, origin);
+        const b = await readBody(req);
+        const src = files.get(String(b.sourceKey ?? ''));
+        if (!src) return send(res, 404, { statusCode: '404', error: 'not_found', message: 'Object not found' }, origin);
+        const dest = String(b.destinationKey ?? '');
+        files.set(dest, src);
+        await pool.query(`insert into storage.objects (bucket_id, name) values ('menu-images', $1) on conflict do nothing`, [dest]).catch(() => undefined);
+        return send(res, 200, { Key: `menu-images/${dest}` }, origin);
+      }
       const pub = /^\/storage\/v1\/object\/public\/menu-images\/(.+)$/.exec(url.pathname);
       if (pub && req.method === 'GET') {
         const f = files.get(decodeURIComponent(pub[1]!));

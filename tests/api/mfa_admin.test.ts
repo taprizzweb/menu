@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { createTestDb, type TestDb } from '../../supabase/tests/helpers/db';
 import { buildWorld, type World } from '../../supabase/tests/helpers/fixtures';
 import { totp } from '../../supabase/tests/helpers/totp';
-import { authState, req, state, uniqueIp } from './helpers';
+import { authState, req, state, storageState, uniqueIp } from './helpers';
 import { GET as adminGET, POST as adminPOST } from '@/app/api/admin/[action]/route';
 import { POST as enrollPOST } from '@/app/api/auth/mfa/enroll/route';
 import { POST as verifyPOST } from '@/app/api/auth/mfa/verify/route';
@@ -194,6 +194,77 @@ describe('platform admin API', () => {
     as(w.A.owner);
     expect((await aPost('staff-add', { id: w.A.rid, email: 'sneaky@example.test', name: 'S', role: 'owner' })).status).toBe(403);
   });
+  it('plans: the admin defines name, points and prices; a restaurant gets its own price and dates; not available to restaurant staff', async () => {
+    as(w.admin);
+    const r = await aPost('plan-save', { name: 'Signature', points: ['Premium menu', 'QR ordering', ''], setup_fee_paise: 1500000, monthly_paise: 249900, yearly_paise: 2499900, active: true, sort_order: 1 });
+    expect(r.status).toBe(200);
+    const { id: planId } = await json(r);
+    const list = await json(await aGet('plans'));
+    expect(list.plans.find((p: any) => p.id === planId)).toMatchObject({ name: 'Signature', points: ['Premium menu', 'QR ordering'], monthly_paise: 249900 });
+    expect((await aPost('plan-save', { name: 'signature', points: [], setup_fee_paise: 0, monthly_paise: 0, yearly_paise: 0, active: true })).status).toBe(409);
+    expect((await aPost('plan-save', { name: 'X', points: [], setup_fee_paise: -5, monthly_paise: 0, yearly_paise: 0, active: true })).status).toBe(400);
+    expect((await aPost('plan-save', { name: 'X', points: ['x'.repeat(130)], setup_fee_paise: 0, monthly_paise: 0, yearly_paise: 0, active: true })).status).toBe(400);
+    expect((await aPost('billing-save', { id: w.B.rid, plan_id: planId, plan_name: 'Signature', price_paise: 199900, period: 'yearly', setup_fee_paise: 1000000, starts_at: '2026-11-01T00:00:00.000Z', paid_until: '2027-10-31T18:29:59.000Z', auto_pause: true, grace_days: 3, note: 'Founding client' })).status).toBe(200);
+    const [row] = await db.admin<any>(`select plan, price_paise, billing_period, auto_pause, grace_days from public.restaurants where id = $1`, [w.B.rid]);
+    expect(row).toMatchObject({ plan: 'Signature', price_paise: 199900, billing_period: 'yearly', auto_pause: true, grace_days: 3 });
+    const listed = (await json(await aGet('restaurants'))).restaurants.find((x: any) => x.id === w.B.rid);
+    expect(listed).toMatchObject({ plan_id: planId, price_paise: 199900, billing_period: 'yearly', grace_days: 3 });
+    expect((await aPost('plan-delete', { id: planId })).status).toBe(409); // in use
+    expect((await aPost('billing-save', { id: w.B.rid, plan_id: null, plan_name: 'Signature', price_paise: 1, period: 'weekly', setup_fee_paise: 0, auto_pause: false, grace_days: 0 })).status).toBe(400);
+    as(w.A.owner);
+    for (const [a, body] of [['plan-save', { name: 'Own', points: [], setup_fee_paise: 0, monthly_paise: 0, yearly_paise: 0, active: true }], ['billing-save', { id: w.A.rid, plan_id: null, plan_name: 'x', price_paise: 0, period: 'monthly', setup_fee_paise: 0, auto_pause: false, grace_days: 0 }], ['restaurant-rename', { id: w.A.rid, name: 'Mine' }]] as const) {
+      expect((await aPost(a, body)).status, a).toBe(403);
+    }
+    expect((await aGet('plans')).status).toBe(403);
+  });
+  it('renames a restaurant and a login (names only; the web address and email stay)', async () => {
+    as(w.admin);
+    expect((await aPost('restaurant-rename', { id: w.B.rid, name: '  Cafe Aroma Deluxe ' })).status).toBe(200);
+    expect((await db.admin<any>(`select name, slug from public.restaurants where id = $1`, [w.B.rid]))[0]).toMatchObject({ name: 'Cafe Aroma Deluxe', slug: w.B.slug });
+    expect((await aPost('restaurant-rename', { id: w.B.rid, name: '' })).status).toBe(400);
+    expect((await aPost('staff-rename', { id: w.B.rid, user_id: w.B.waiter, name: 'Ravi Kumar' })).status).toBe(200);
+    expect((await db.admin<any>(`select display_name from public.staff where user_id = $1`, [w.B.waiter]))[0].display_name).toBe('Ravi Kumar');
+    expect((await aPost('staff-rename', { id: w.A.rid, user_id: w.B.waiter, name: 'Wrong' })).status).toBe(404);
+  });
+  it('duplicates a restaurant: copies menu and photos, gives a new owner a temporary password, and leaves no half-made login behind', async () => {
+    as(w.admin);
+    const photo = `${w.A.rid}/11111111-1111-4111-8111-111111111111.webp`;
+    await db.admin(`update public.items set image_path = $2 where id = $1`, [w.A.paneer, photo]);
+    storageState.copied.length = 0;
+    const r = await aPost('duplicate-restaurant', { source_id: w.A.rid, slug: 'copy-one', name: 'Copy One', owner_email: 'Copy.Owner@Example.test', owner_name: 'Cora' });
+    expect(r.status).toBe(201);
+    const b = await json(r);
+    expect(b).toMatchObject({ slug: 'copy-one', owner_email: 'copy.owner@example.test', photos_copied: 1, photos_failed: 0 });
+    expect(b.temporary_password.length).toBeGreaterThanOrEqual(14);
+    expect(storageState.copied).toHaveLength(1);
+    expect(storageState.copied[0]![0]).toBe(photo);
+    expect(storageState.copied[0]![1].startsWith(`${b.id}/`)).toBe(true);
+    expect(authState.meta.get((await db.admin<any>(`select user_id from public.staff where restaurant_id = $1`, [b.id]))[0].user_id)?.app_metadata).toMatchObject({ must_change_password: true });
+    // a photo that cannot be copied is dropped from the copy instead of pointing at nothing
+    storageState.failOn.add(photo);
+    const r2 = await aPost('duplicate-restaurant', { source_id: w.A.rid, slug: 'copy-two', name: 'Copy Two', owner_email: 'copy2@example.test', owner_name: 'Cy' });
+    storageState.failOn.clear();
+    expect(await json(r2)).toMatchObject({ photos_copied: 0, photos_failed: 1 });
+    expect((await db.admin<any>(`select count(*)::int n from public.items where restaurant_id = (select id from public.restaurants where slug = 'copy-two') and image_path is not null`))[0].n).toBe(0);
+    // refused: taken address, taken email, unknown source; nothing is left behind
+    expect((await aPost('duplicate-restaurant', { source_id: w.A.rid, slug: 'copy-one', name: 'Again', owner_email: 'fresh@example.test', owner_name: 'F' })).status).toBe(409);
+    expect(await db.admin(`select 1 from auth.users where email = 'fresh@example.test'`)).toHaveLength(0);
+    expect((await aPost('duplicate-restaurant', { source_id: w.A.rid, slug: 'copy-three', name: 'T', owner_email: 'copy.owner@example.test', owner_name: 'F' })).status).toBe(409);
+    expect((await aPost('duplicate-restaurant', { source_id: randomUUID(), slug: 'copy-four', name: 'T', owner_email: 'four@example.test', owner_name: 'F' })).status).toBe(404);
+    expect(await db.admin(`select 1 from auth.users where email = 'four@example.test'`)).toHaveLength(0);
+    as(w.A.owner);
+    expect((await aPost('duplicate-restaurant', { source_id: w.A.rid, slug: 'sneaky', name: 'S', owner_email: 's@example.test', owner_name: 'S' })).status).toBe(403);
+  });
+  it('an expired plan with automatic pause refuses new orders', async () => {
+    as(w.admin);
+    await aPost('billing-save', { id: w.A.rid, plan_id: null, plan_name: 'Test', price_paise: 0, period: 'monthly', setup_fee_paise: 0, paid_until: new Date(Date.now() - 20 * 86400_000).toISOString(), auto_pause: true, grace_days: 1, note: '' });
+    const [t] = await db.admin<{ qr_token: string }>(`insert into public.dining_tables (restaurant_id, label) values ($1, 'EXP1') returning qr_token`, [w.A.rid]);
+    const { POST: orderPOST } = await import('@/app/api/guest/order/route');
+    const res = await orderPOST(req('/api/guest/order', { slug: w.A.slug, token: t!.qr_token, idempotency_key: randomUUID(), items: [{ item_id: w.A.chai, qty: 1 }] }, { ip: uniqueIp() }));
+    expect(res.status).toBe(403);
+    expect((await json(res)).error.key).toBe('restaurant_suspended');
+    await aPost('billing-save', { id: w.A.rid, plan_id: null, plan_name: 'Test', price_paise: 0, period: 'monthly', setup_fee_paise: 0, paid_until: null, auto_pause: true, grace_days: 0, note: '' });
+  });
   it('refuses duplicate slugs, reserved slugs, bad emails and does not leave a login behind', async () => {
     as(w.admin);
     const before = (await db.admin(`select 1 from auth.users`)).length;
@@ -216,7 +287,7 @@ describe('platform admin API', () => {
     expect(s!.status).toBe('suspended');
     as(w.admin);
     expect((await aPost('set-status', { id: w.B.rid, status: 'active' })).status).toBe(200);
-    expect((await aPost('set-plan', { id: w.B.rid, plan: 'standard', paid_until: '2027-03-31T18:29:59.000Z' })).status).toBe(200);
+    expect((await aPost('billing-save', { id: w.B.rid, plan_id: null, plan_name: 'standard', price_paise: 0, period: 'monthly', setup_fee_paise: 0, paid_until: '2027-03-31T18:29:59.000Z', auto_pause: false, grace_days: 0, note: '' })).status).toBe(200);
     const [p] = await db.admin<{ plan: string }>(`select plan from public.restaurants where id = $1`, [w.B.rid]);
     expect(p!.plan).toBe('standard');
     expect((await aPost('set-status', { id: w.B.rid, status: 'deleted' })).status).toBe(400);

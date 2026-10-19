@@ -59,12 +59,89 @@ export const ADMIN_ACTIONS: Record<string, AdminAction> = {
     },
   },
 
-  'set-plan': {
+  // Plans the platform admin defines (name, bullet points, prices). Prices are in paise.
+  plans: {
+    method: 'GET',
+    run: async (ctx) => jsonOk({ plans: await rpc('admin_list_plans', { p_admin: ctx.userId }) }, ctx.requestId),
+  },
+  'plan-save': {
     method: 'POST',
-    schema: S.setPlan,
+    schema: S.planSave,
+    run: async (ctx, b: ReturnType<typeof S.planSave.parse>) => {
+      const id = await rpc<string>('admin_save_plan', { p_admin: ctx.userId, p_id: b.id ?? null, p_name: b.name, p_points: b.points, p_setup: b.setup_fee_paise, p_monthly: b.monthly_paise, p_yearly: b.yearly_paise, p_active: b.active, p_sort: b.sort_order }).catch(conflictOrThrow);
+      return jsonOk({ id }, ctx.requestId);
+    },
+  },
+  'plan-delete': {
+    method: 'POST',
+    schema: S.planDelete,
     run: async (ctx, b) => {
-      await rpc('admin_set_plan', { p_admin: ctx.userId, p_restaurant: b.id, p_plan: b.plan, p_paid_until: b.paid_until });
+      await rpc('admin_delete_plan', { p_admin: ctx.userId, p_id: b.id });
       return jsonOk({ ok: true }, ctx.requestId);
+    },
+  },
+
+  // One restaurant's plan, its own price, billing period, start / end date and what happens when it ends.
+  'billing-save': {
+    method: 'POST',
+    schema: S.billingSave,
+    run: async (ctx, b: ReturnType<typeof S.billingSave.parse>) => {
+      await rpc('admin_set_billing', {
+        p_admin: ctx.userId, p_restaurant: b.id, p_plan_id: b.plan_id, p_plan_name: b.plan_name, p_price: b.price_paise, p_period: b.period,
+        p_setup: b.setup_fee_paise, p_starts: b.starts_at, p_paid_until: b.paid_until, p_auto_pause: b.auto_pause, p_grace: b.grace_days, p_note: b.note,
+      });
+      return jsonOk({ ok: true }, ctx.requestId);
+    },
+  },
+
+  'restaurant-rename': {
+    method: 'POST',
+    schema: S.restaurantRename,
+    run: async (ctx, b) => {
+      await rpc('admin_rename_restaurant', { p_admin: ctx.userId, p_restaurant: b.id, p_name: b.name });
+      return jsonOk({ ok: true }, ctx.requestId);
+    },
+  },
+  'staff-rename': {
+    method: 'POST',
+    schema: S.staffRename,
+    run: async (ctx, b) => {
+      await rpc('admin_set_staff_name', { p_admin: ctx.userId, p_restaurant: b.id, p_user: b.user_id, p_name: b.name });
+      return jsonOk({ ok: true }, ctx.requestId);
+    },
+  },
+
+  // A new restaurant that starts as a copy of another one's look and menu, with its own owner login.
+  'duplicate-restaurant': {
+    method: 'POST',
+    schema: S.duplicateRestaurant,
+    run: async (ctx, b: ReturnType<typeof S.duplicateRestaurant.parse>) => {
+      const admin = adminClient();
+      const password = temporaryPassword();
+      const { data, error } = await admin.auth.admin.createUser({ email: b.owner_email, password, email_confirm: true, app_metadata: { must_change_password: true } });
+      if (error || !data.user) {
+        if (error && /already|exists|registered/i.test(error.message)) throw new ApiError(409, 'conflict');
+        throw Object.assign(new Error('could not create owner login'), { dbCode: String(error?.status ?? '') });
+      }
+      let made: { id: string; images: { from: string; to: string }[] };
+      try {
+        made = await rpc('admin_duplicate_restaurant', { p_admin: ctx.userId, p_source: b.source_id, p_slug: b.slug, p_name: b.name, p_owner_user_id: data.user.id, p_owner_name: b.owner_name });
+      } catch (e) {
+        await admin.auth.admin.deleteUser(data.user.id).catch(() => undefined); // no orphan login
+        return conflictOrThrow(e);
+      }
+      // photos live in storage under the restaurant's own folder, so each one is copied to its new path
+      const failed: string[] = [];
+      for (let i = 0; i < made.images.length; i += 5) {
+        await Promise.all(
+          made.images.slice(i, i + 5).map(async (p) => {
+            const { error: ce } = await admin.storage.from('menu-images').copy(p.from, p.to).catch((x: unknown) => ({ error: x }));
+            if (ce) failed.push(p.to);
+          }),
+        );
+      }
+      if (failed.length) await rpc('admin_clear_images', { p_admin: ctx.userId, p_restaurant: made.id, p_paths: failed });
+      return jsonOk({ id: made.id, slug: b.slug, owner_email: b.owner_email, temporary_password: password, photos_copied: made.images.length - failed.length, photos_failed: failed.length }, ctx.requestId, { status: 201 });
     },
   },
 

@@ -13,7 +13,19 @@ export const state = {
 };
 
 /** What the server code gets instead of the real Supabase client: same rpc() contract, real SQL underneath. */
+export const storageState = { copied: [] as [string, string][], failOn: new Set<string>() };
 export const fakeAdminClient = {
+  storage: {
+    from: () => ({
+      copy: async (from: string, to: string) => {
+        if (storageState.failOn.has(from)) return { data: null, error: { message: 'copy failed' } };
+        storageState.copied.push([from, to]);
+        return { data: { path: to }, error: null };
+      },
+      list: async () => ({ data: [], error: null }),
+      remove: async () => ({ data: [], error: null }),
+    }),
+  },
   auth: {
     admin: {
       createUser: async ({ email, password, app_metadata }: { email: string; password: string; app_metadata?: Record<string, unknown> }) => {

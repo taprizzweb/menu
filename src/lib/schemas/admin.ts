@@ -26,9 +26,43 @@ export const createRestaurant = z
   .strict();
 
 export const setStatus = z.object({ id: uuid, status: z.enum(['active', 'suspended']) }).strict();
-export const setPlan = z.object({ id: uuid, plan: text(30), paid_until: paidUntil }).strict();
 export const restaurantQuery = z.object({ id: uuid });
 export const deleteRestaurant = z.object({ id: uuid, confirm_slug: z.string().min(1).max(60) }).strict();
 export const staffReset = z.object({ id: uuid, user_id: uuid }).strict();
 export const staffEmail = z.object({ id: uuid, user_id: uuid, email: z.string().trim().toLowerCase().email().max(254) }).strict();
 export const staffAdd = z.object({ id: uuid, email: z.string().trim().toLowerCase().email().max(254), name: text(60), role: z.enum(['owner', 'manager', 'waiter', 'kitchen']) }).strict();
+
+const paise = z.number().int().min(0).max(100_000_000);
+export const planSave = z
+  .object({
+    id: uuid.nullish(),
+    name: text(40),
+    points: z.array(z.string().trim().max(120).regex(/^[^\u0000-\u001F\u007F]*$/)).max(20),
+    setup_fee_paise: paise,
+    monthly_paise: paise,
+    yearly_paise: paise,
+    active: z.boolean(),
+    sort_order: z.number().int().min(0).max(1000).default(0),
+  })
+  .strict();
+export const planDelete = z.object({ id: uuid }).strict();
+export const billingSave = z
+  .object({
+    id: uuid,
+    plan_id: uuid.nullable(),
+    plan_name: text(40),
+    price_paise: paise,
+    period: z.enum(['monthly', 'yearly', 'one_time']),
+    setup_fee_paise: paise,
+    starts_at: paidUntil.default(null),
+    paid_until: paidUntil.default(null),
+    auto_pause: z.boolean(),
+    grace_days: z.number().int().min(0).max(60),
+    note: z.string().trim().max(300).regex(/^[^\u0000-\u001F\u007F]*$/).default(''),
+  })
+  .strict();
+export const restaurantRename = z.object({ id: uuid, name: text(80) }).strict();
+export const staffRename = z.object({ id: uuid, user_id: uuid, name: text(60) }).strict();
+export const duplicateRestaurant = z
+  .object({ source_id: uuid, slug: slugSchema, name: text(80), owner_email: z.string().trim().toLowerCase().email().max(254), owner_name: text(60) })
+  .strict();
