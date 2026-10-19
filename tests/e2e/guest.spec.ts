@@ -28,7 +28,7 @@ async function placeOrderFromCart(page: Page) {
 }
 
 test.describe('guest journey', () => {
-  test('scan → order → live status → call waiter → ask bill → paid → thank-you → review', async ({ page, context }, info) => {
+  test('scan → order → live status → call waiter → ask bill → paid → thank-you', async ({ page }, info) => {
     const t = await newTable();
     await open(page, t);
     await expect(page.getByText(`Table ${t.label}`)).toBeVisible();
@@ -100,17 +100,30 @@ test.describe('guest journey', () => {
     await expect(page.getByText('Total: ₹650')).toBeVisible();
     await page.screenshot({ path: `${SHOTS}/${info.project.name}-7-thanks.png` });
 
-    const rate = page.getByRole('link', { name: 'Rate us on Google' });
-    await expect(rate).toHaveAttribute('href', '/api/guest/review');
-    // opens in a new tab, without giving the review site access to our page
-    await expect(rate).toHaveAttribute('target', '_blank');
-    await expect(rate).toHaveAttribute('rel', /noopener/);
-    // The sandbox has no internet, so follow the redirect by hand: the server must answer 302 to the review link.
-    const res = await context.request.get('/api/guest/review', { maxRedirects: 0 });
-    expect(res.status()).toBe(302);
-    expect(res.headers()['location']).toMatch(/^https:\/\/search\.google\.com\/local\/writereview\?placeid=/);
-    const clicks = await q<{ n: number }>(`select count(*)::int n from public.review_clicks where session_id = $1`, [sid]);
-    expect(clicks[0]!.n).toBe(1);
+    // no Google-review button any more; without an explore link the thank-you screen has no outside button at all
+    await expect(page.getByRole('link', { name: 'Rate us on Google' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Explore more before leaving' })).toHaveCount(0);
+  });
+
+  test('after the table is paid the thank-you screen offers the one "Explore more before leaving" button', async ({ page }) => {
+    await q(`update public.restaurants set explore_code = 'spice-garden_1' where slug = 'spice-garden'`);
+    try {
+      const t = await newTable();
+      await open(page, t);
+      await add(page, 'Masala Chai');
+      await placeOrderFromCart(page);
+      await expect(page.getByRole('heading', { name: 'Your orders' })).toBeVisible();
+      await staff(OWNER, 'staff_close_session', { p_session_id: (await sessionOf(t.id))!, p_force: true, p_reason: 'test' });
+      await expect(page.getByRole('heading', { name: 'Thank you!' })).toBeVisible();
+      const go = page.getByRole('link', { name: 'Explore more before leaving' });
+      await expect(go).toHaveAttribute('href', 'https://smarty.taprizz.in/sq/spice-garden_1');
+      await expect(go).toHaveAttribute('target', '_blank');
+      await expect(go).toHaveAttribute('rel', /noopener/);
+      await expect(page.getByRole('link', { name: 'Rate us on Google' })).toHaveCount(0);
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-7-thanks-explore.png` });
+    } finally {
+      await q(`update public.restaurants set explore_code = null where slug = 'spice-garden'`);
+    }
   });
 
   test('the guest can reorder after paying: a new scan starts a fresh table session', async ({ page }) => {

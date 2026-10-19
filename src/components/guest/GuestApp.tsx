@@ -162,7 +162,7 @@ export function GuestApp({
 
       <main>
         {showStatus && closed && status ? (
-          <ThankYou data={status} t={t} onBack={() => setView('menu')} />
+          <ThankYou data={status} t={t} onBack={() => setView('menu')} exploreCode={menu.restaurant.explore_code} onExplore={() => track('explore_click')} />
         ) : showStatus ? (
           <StatusView data={status} t={t} onAddMore={() => setView('menu')} />
         ) : (

@@ -108,7 +108,6 @@ export const en = {
   'thanks.title': 'Thank you!',
   'thanks.body': 'We hope you enjoyed your meal. Your table is settled.',
   'thanks.total': 'Total: {amount}',
-  'thanks.rate': 'Rate us on Google',
   'thanks.expired': 'Thanks for visiting. Scan the QR code again to order.',
   // page states
   'state.suspended.title': 'Ordering is paused',

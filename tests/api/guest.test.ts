@@ -12,7 +12,6 @@ import { signGuestCookie, GUEST_COOKIE } from '@/lib/security/cookie';
 import { POST as orderPOST } from '@/app/api/guest/order/route';
 import { GET as statusGET } from '@/app/api/guest/status/route';
 import { POST as requestPOST } from '@/app/api/guest/request/route';
-import { GET as reviewGET } from '@/app/api/guest/review/route';
 import { POST as eventPOST } from '@/app/api/guest/event/route';
 import { GET as healthGET } from '@/app/api/health/route';
 
@@ -333,27 +332,9 @@ describe('POST /api/guest/request', () => {
   });
 });
 
-describe('GET /api/guest/review', () => {
-  const go = (cookie?: string) => reviewGET(req('/api/guest/review', undefined, { cookie }));
-
-  it('needs the cookie; refuses while the table is still open; after payment records the tap and redirects', async () => {
-    const t = await freshTable();
-    expect((await go()).status).toBe(401);
-    const cookie = cookieFrom(await orderPOST(req('/api/guest/order', orderBody(t))))!;
-    expect((await go(cookie)).status).toBe(404); // not paid yet
-    const sid = (await db.admin<{ session_id: string }>(`select session_id from public.orders where table_id = $1`, [t.id]))[0]!.session_id;
-    await db.as('authenticated', w.A.waiter, `select public.staff_close_session($1, false, null, null)`, [sid]).catch(() => undefined);
-    await db.as('authenticated', w.A.owner, `select public.staff_close_session($1, true, 'test')`, [sid]);
-    const res = await go(cookie);
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe(`https://g.page/r/${w.A.slug}/review`);
-    const [n] = await db.admin<{ n: number }>(`select count(*)::int n from public.review_clicks where session_id = $1`, [sid]);
-    expect(n!.n).toBe(1);
-  });
-
-  it('a forged cookie cannot record clicks', async () => {
-    const res = await go(`gm_sid=${signGuestCookie({ sessionId: randomUUID(), slug: w.A.slug, exp: Math.floor(Date.now() / 1000) + 600 }, 'attacker-secret-attacker-secret-attacker')}`);
-    expect(res.status).toBe(401);
+describe('the old Google-review redirect is gone', () => {
+  it('there is no /api/guest/review endpoint any more (the thank-you screen shows the explore button instead)', async () => {
+    await expect(import('@/app/api/guest/review/route' as string)).rejects.toThrow();
   });
 });
 

@@ -1,4 +1,5 @@
 'use client';
+import { exploreUrl } from '@/lib/profile';
 import { formatPaise } from '@/lib/money';
 import type { OrderStatus, StatusData, StatusOrder } from '@/lib/guest/types';
 import type { Translator } from '@/lib/i18n';
@@ -86,17 +87,16 @@ export function StatusView({ data, t, onAddMore }: { data: StatusData | null; t:
   );
 }
 
-export function ThankYou({ data, t, onBack }: { data: StatusData; t: Translator; onBack: () => void }) {
+export function ThankYou({ data, t, onBack, exploreCode, onExplore }: { data: StatusData; t: Translator; onBack: () => void; exploreCode?: string | null; onExplore?: () => void }) {
   return (
     <div className="mx-auto max-w-md px-6 py-12 text-center">
       <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-800"><IconCheck className="h-8 w-8" /></span>
       <h2 className="mt-5 text-3xl font-extrabold">{t('thanks.title')}</h2>
       <p className="mt-2 text-stone-700">{t('thanks.body')}</p>
       <p className="mt-4 text-xl font-bold">{t('thanks.total', { amount: formatPaise(data.total_paise ?? 0) })}</p>
-      {data.review_available && (
-        // A plain link to our redirect endpoint: it records the tap, then sends the guest to the restaurant's Google review page.
-        <a href="/api/guest/review" target="_blank" rel="noopener noreferrer" className={`${btnPrimary} mt-8 w-full min-h-14 text-lg`}>
-          {t('thanks.rate')}
+      {exploreCode && (
+        <a href={exploreUrl(exploreCode)} target="_blank" rel="noopener noreferrer" onClick={onExplore} className={`${btnPrimary} mt-8 w-full min-h-14 text-lg`}>
+          {t('info.exploreMore')}
         </a>
       )}
       <button type="button" onClick={onBack} className={`${btnSecondary} mt-4 w-full`}>{t('status.back')}</button>

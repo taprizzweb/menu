@@ -66,7 +66,6 @@ export interface StatusData {
   pay_mode?: PayMode | null;
   bill_requested?: boolean;
   total_paise?: number;
-  review_available?: boolean;
   orders?: StatusOrder[];
   requests?: StatusRequest[];
 }
