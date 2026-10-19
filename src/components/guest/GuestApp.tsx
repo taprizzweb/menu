@@ -9,7 +9,7 @@ import { errorMessageKey, t } from '@/lib/i18n';
 import { CartSheet } from './CartSheet';
 import { BillSheet, WaiterSheet } from './HelpSheets';
 import { MenuView } from './MenuView';
-import { RestaurantHero } from './RestaurantHero';
+import { RestaurantHero, RestaurantInfo } from './RestaurantHero';
 import { StatusView, ThankYou } from './StatusView';
 import { forgetIdempotencyKey, idempotencyKeyFor, useCart, useLiveStatus } from './hooks';
 import { IconBell, IconCart, IconList, IconReceipt, Notice, Alert } from './ui';
@@ -131,11 +131,11 @@ export function GuestApp({
 
   return (
     <div data-accent={accent} className="min-h-dvh pb-44">
-      <RestaurantHero r={menu.restaurant} imageBase={imageBase} tableLabel={menu.table_label} t={t} />
+      <RestaurantHero r={menu.restaurant} imageBase={imageBase} tableLabel={menu.table_label} t={t} compact={showStatus} />
 
-      {!online && <div className="mx-auto max-w-2xl px-4 pb-2"><Notice>{t('state.offline')}</Notice></div>}
+      {!online && <div className="mx-auto max-w-5xl px-4 pt-3"><Notice>{t('state.offline')}</Notice></div>}
       {!tokenValid && (
-        <div className="mx-auto max-w-2xl px-4 pb-2">
+        <div className="mx-auto max-w-5xl px-4 pt-4">
           {token ? <Alert>{t('state.invalidQr.title')}. {t('state.invalidQr.body')}</Alert> : <Notice>{t('state.noQr.title')}. {t('state.noQr.body')}</Notice>}
         </div>
       )}
@@ -148,6 +148,7 @@ export function GuestApp({
         ) : (
           <MenuView categories={categories} t={t} canOrder={canOrder} imageBase={imageBase} qtyOf={cart.qtyOf} onAdd={cart.add} onSet={cart.setQty} />
         )}
+        {!showStatus && <RestaurantInfo r={menu.restaurant} t={t} />}
       </main>
 
       {canOrder && !(showStatus && closed) && (

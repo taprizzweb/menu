@@ -302,6 +302,30 @@ test.describe('security on the real server', () => {
   });
 });
 
+test.describe('dish details', () => {
+  test('a dish with a photo opens a details sheet with the full description and an Add button; favourites show bestsellers', async ({ page }) => {
+    const t = await newTable();
+    const [it] = await q<{ id: string; rid: string; name_en: string }>(`select i.id, i.restaurant_id rid, i.name_en from public.items i join public.restaurants r on r.id = i.restaurant_id where r.slug = 'spice-garden' and i.is_available and i.name_en = 'Paneer Tikka'`);
+    const path = `${it!.rid}/00000000-0000-4000-8000-0000000000aa.webp`;
+    await q(`update public.items set image_path = $2 where id = $1`, [it!.id, path]);
+    try {
+      await open(page, t);
+      await expect(page.getByRole('heading', { name: 'Our favourites' })).toBeVisible();
+      await page.getByRole('button', { name: 'View Paneer Tikka' }).last().click();
+      await expect(dialog(page).getByRole('button', { name: 'Add Paneer Tikka', exact: true })).toBeVisible();
+      await dialog(page).getByRole('button', { name: 'Add Paneer Tikka', exact: true }).click();
+      await expect(dialog(page).getByRole('button', { name: 'Add one more Paneer Tikka' })).toBeVisible();
+      await dialog(page).getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(dialog(page)).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /View cart/ })).toContainText('₹280');
+      await page.getByLabel('Search the menu').fill('tikka');
+      await expect(page.getByRole('heading', { name: 'Our favourites' })).toHaveCount(0); // favourites only while browsing
+    } finally {
+      await q(`update public.items set image_path = null where id = $1`, [it!.id]);
+    }
+  });
+});
+
 test.describe('accessibility (axe, WCAG 2 A/AA)', () => {
   const scan = async (page: Page, label: string) => {
     // Sheets fade in over 220 ms; scanning mid-fade measures colours against the dimmed backdrop and reports false contrast failures.

@@ -4,6 +4,13 @@ export const en = {
   'app.privacy': 'Privacy',
   'app.poweredBy': 'Powered by GoToMenu',
   // restaurant profile / hero
+  'hero.explore': 'Explore the menu',
+  'hero.info': 'Info & contact',
+  'info.title': 'Find us',
+  'menu.favourites': 'Our favourites',
+  'item.view': 'View {name}',
+  'item.details': 'Dish details',
+  'item.close': 'Close',
   'hero.call': 'Call',
   'hero.whatsapp': 'WhatsApp',
   'hero.directions': 'Directions',
