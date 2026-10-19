@@ -15,7 +15,8 @@ describe('security headers on a real response', () => {
         expect(h.get('cross-origin-opener-policy')).toBe('same-origin');
         expect(h.get('x-frame-options')).toBe('DENY');
         const pp = h.get('permissions-policy') ?? '';
-        for (const f of ['camera', 'microphone', 'geolocation', 'payment']) expect(pp).toContain(`${f}=()`);
+        for (const f of ['camera', 'microphone', 'payment']) expect(pp).toContain(`${f}=()`);
+        expect(pp).toContain('geolocation=(self)'); // only our own pages may ask (the optional near-the-cafe ordering rule)
         expect(h.get('x-powered-by')).toBeNull();
         expect(h.get('x-request-id')).toMatch(/^[0-9a-f-]{36}$/);
       });

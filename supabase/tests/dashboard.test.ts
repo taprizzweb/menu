@@ -509,3 +509,32 @@ describe('menu analytics', () => {
     expect((await db.admin<any>(`select count(*)::int n from public.menu_events where created_at < now() - interval '180 days'`))[0].n).toBe(0);
   });
 });
+
+describe('orders only near the cafe', () => {
+  const CAFE = { lat: 26.9124, lng: 75.7873 };
+  const check = (slug: string, lat: number | null, lng: number | null, acc: number | null) => svc<string>('guest_check_location', [slug, lat, lng, acc]);
+  it('only the owner can set it; it cannot be switched on without a position or with nonsense values', async () => {
+    expect((await err(w.A.manager, 'mgr_update_location', [true, CAFE.lat, CAFE.lng, 150]))?.code).toBe('GM011');
+    expect((await err(w.A.waiter, 'mgr_update_location', [true, CAFE.lat, CAFE.lng, 150]))?.code).toBe('GM011');
+    expect((await err(w.A.owner, 'mgr_update_location', [true, null, null, 150]))?.code).toBe('GM015');
+    expect((await err(w.A.owner, 'mgr_update_location', [true, 91, 75, 150]))?.code).toBe('GM015');
+    expect((await err(w.A.owner, 'mgr_update_location', [true, CAFE.lat, CAFE.lng, 10]))?.code).toBe('GM015');
+    expect(await err(w.A.owner, 'mgr_update_location', [true, CAFE.lat, CAFE.lng, 150])).toBeNull();
+    expect(await call<any>(w.A.manager, 'mgr_get_settings')).toMatchObject({ geo_required: true, geo_radius_m: 150, geo_lat: CAFE.lat });
+    expect((await svcErr('mgr_update_location', [false, null, null, 150]))?.code).toBeDefined(); // not callable with the service key
+  });
+  it('checks distance with the phone\'s own accuracy as a margin, and only for restaurants that switched it on', async () => {
+    expect(await check(w.B.slug, null, null, null)).toBe('ok'); // restaurant B never switched it on
+    expect(await check(w.A.slug, null, null, null)).toBe('required');
+    expect(await check(w.A.slug, CAFE.lat, CAFE.lng, 900)).toBe('inaccurate');
+    expect(await check(w.A.slug, CAFE.lat, CAFE.lng, null)).toBe('inaccurate');
+    expect(await check(w.A.slug, CAFE.lat + 0.0005, CAFE.lng, 20)).toBe('ok'); // about 55 m
+    expect(await check(w.A.slug, CAFE.lat + 0.0027, CAFE.lng, 10)).toBe('too_far'); // about 300 m with a good fix
+    expect(await check(w.A.slug, CAFE.lat + 0.0027, CAFE.lng, 200)).toBe('ok'); // same spot, poor fix: benefit of the doubt (150 + 200)
+    expect(await check(w.A.slug, CAFE.lat + 0.1, CAFE.lng, 200)).toBe('too_far');
+    expect(await check(w.A.slug, 123, CAFE.lng, 10)).toBe('required');
+    expect(await check('no-such-cafe', null, null, null)).toBe('ok'); // unknown restaurants fail later, with the usual not-found
+    await db.admin(`update public.restaurants set geo_required = false where id = $1`, [w.A.rid]);
+    expect(await check(w.A.slug, CAFE.lat + 0.1, CAFE.lng, 10)).toBe('ok');
+  });
+});

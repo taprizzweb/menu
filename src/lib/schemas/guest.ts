@@ -21,6 +21,8 @@ export const orderBody = z
       .max(25),
     note: text(200).optional(),
     idempotency_key: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),
+    // Only sent when the cafe asks for it; used for one distance check and never stored.
+    geo: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).max(100000) }).strict().optional(),
   })
   .strict();
 export type OrderBody = z.infer<typeof orderBody>;

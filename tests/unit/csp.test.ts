@@ -63,7 +63,8 @@ describe('security headers', () => {
     expect(h['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
     expect(h['Cross-Origin-Opener-Policy']).toBe('same-origin');
     expect(h['X-Frame-Options']).toBe('DENY');
-    for (const f of ['camera', 'microphone', 'geolocation', 'payment']) expect(h['Permissions-Policy']).toContain(`${f}=()`);
+    for (const f of ['camera', 'microphone', 'payment']) expect(h['Permissions-Policy']).toContain(`${f}=()`);
+    expect(h['Permissions-Policy']).toContain('geolocation=(self)'); // only our own pages may ask, for the optional near-the-cafe ordering rule
   });
 });
 

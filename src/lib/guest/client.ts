@@ -40,6 +40,7 @@ export interface PlaceOrderInput {
   items: { item_id: string; qty: number; note?: string }[];
   note?: string;
   idempotency_key: string;
+  geo?: { lat: number; lng: number; accuracy: number };
 }
 export const placeOrder = (input: PlaceOrderInput) =>
   post<{ order_no: number; total_paise: number; status: string; replayed: boolean }>('/api/guest/order', input);
@@ -51,3 +52,17 @@ export const askBill = (slug: string, token: string, payMode: PayMode) =>
   post<{ request: { type: string; status: string; pay_mode: PayMode } }>('/api/guest/request', { type: 'bill', slug, token, pay_mode: payMode });
 
 export const fetchStatus = (slug: string, signal?: AbortSignal) => call<StatusData>(`/api/guest/status?slug=${encodeURIComponent(slug)}`, { signal });
+
+/** One-off position for cafes that only take orders from guests who are there. Never stored by the app. */
+export function currentPosition(): Promise<{ lat: number; lng: number; accuracy: number }> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return reject(new ApiFailure('location_unavailable', 0));
+    // The browser's own timeout only starts after the guest answers the permission prompt, so add our own: an ignored prompt must not leave "Place order" spinning forever.
+    const watchdog = setTimeout(() => reject(new ApiFailure('location_unavailable', 0)), 15000);
+    navigator.geolocation.getCurrentPosition(
+      (p) => { clearTimeout(watchdog); resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }); },
+      (e) => { clearTimeout(watchdog); reject(new ApiFailure(e.code === 1 ? 'location_denied' : 'location_unavailable', 0)); },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+    );
+  });
+}

@@ -53,6 +53,11 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
     args: (b) => ({ p_tagline: b.tagline, p_description: b.description, p_logo: b.logo_path, p_banner: b.banner_path, p_phone: b.phone, p_whatsapp: b.whatsapp, p_address: b.address, p_hours: b.hours_text, p_instagram: b.instagram_url }),
     result: () => ({ ok: true }),
   },
+  'location-save': {
+    method: 'POST', rpc: 'mgr_update_location', schema: S.locationSave,
+    args: (b) => ({ p_required: b.required, p_lat: b.lat, p_lng: b.lng, p_radius: b.radius_m }),
+    result: () => ({ ok: true }),
+  },
   'settings-save': {
     method: 'POST', rpc: 'mgr_update_settings', schema: S.settingsSave,
     args: (b) => ({ p_name: b.name, p_review_url: b.review_url || null, p_accent: b.accent, p_amber: b.amber_minutes, p_red: b.red_minutes }),

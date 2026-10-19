@@ -3,10 +3,11 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Alert, Notice, btnPrimary } from '@/components/guest/ui';
 import { ACCENTS, type AccentKey } from '@/lib/accent';
+import { LocationForm, type Geo } from './LocationForm';
 import { ProfileForm, type Profile } from './ProfileForm';
 import { dashPost, errText, fmtDateTime, inputCls, useDashData } from './api';
 
-interface Settings extends Profile { name: string; slug: string; review_url: string | null; accent: AccentKey; amber_minutes: number; red_minutes: number; plan: string; paid_until: string | null; status: string }
+interface Settings extends Profile, Geo { name: string; slug: string; review_url: string | null; accent: AccentKey; amber_minutes: number; red_minutes: number; plan: string; paid_until: string | null; status: string }
 
 export function SettingsForm({ canEdit, supabase, imageBase }: { canEdit: boolean; supabase: { url: string; anonKey: string }; imageBase: string }) {
   const { data, error } = useDashData<Settings>('settings');
@@ -69,6 +70,7 @@ function Form({ s, canEdit, supabase, imageBase }: { s: Settings; canEdit: boole
         {ok && <Notice>Settings saved.</Notice>}
         {canEdit && <button type="submit" disabled={busy} className={`${btnPrimary} w-full sm:w-auto`}>Save settings</button>}
       </form>
+      <LocationForm g={s} canEdit={canEdit} />
       <ProfileForm p={s} canEdit={canEdit} supabase={supabase} imageBase={imageBase} />
       <dl className="mt-6 grid gap-2 rounded-2xl border border-stone-200 bg-white p-4 text-sm sm:grid-cols-2">
         <div><dt className="font-semibold">Guest menu address</dt><dd className="break-all text-stone-800">/{s.slug}</dd></div>

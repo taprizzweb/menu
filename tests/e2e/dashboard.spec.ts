@@ -329,6 +329,22 @@ test.describe('settings', () => {
       await q(`update public.restaurants set tagline = null, description = null, logo_path = null, banner_path = null, phone = null, whatsapp = null, address = null, hours_text = null, instagram_url = null where slug = 'spice-garden'`);
     }
   });
+  test('owner switches on "orders only near the cafe" with the cafe position; it needs a position', async ({ page }) => {
+    await loginAs(page, 'owner', '/dash/settings');
+    try {
+      await page.getByLabel('Only take orders from guests near the cafe').check();
+      await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+      await expect(page.locator('p[role="alert"]').first()).toBeVisible(); // no position yet
+      await page.getByLabel('Latitude').fill('26.9124');
+      await page.getByLabel('Longitude').fill('75.7873');
+      await page.getByLabel('How near is “near”').selectOption('250');
+      await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+      await expect(page.getByText('Saved.')).toBeVisible();
+      expect((await q<any>(`select geo_required, geo_lat, geo_lng, geo_radius_m from public.restaurants where slug = 'spice-garden'`))[0]).toEqual({ geo_required: true, geo_lat: 26.9124, geo_lng: 75.7873, geo_radius_m: 250 });
+    } finally {
+      await q(`update public.restaurants set geo_required = false, geo_lat = null, geo_lng = null, geo_radius_m = 150 where slug = 'spice-garden'`);
+    }
+  });
   test('a manager sees settings read-only', async ({ page }) => {
     await loginAs(page, 'manager', '/dash/settings');
     await expect(page.getByText('Only the owner can change settings')).toBeVisible();

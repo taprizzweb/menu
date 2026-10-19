@@ -113,3 +113,13 @@ export const profileSave = z
     instagram_url: instagram,
   })
   .strict();
+
+export const locationSave = z
+  .object({
+    required: z.boolean(),
+    lat: z.number().min(-90).max(90).nullable(),
+    lng: z.number().min(-180).max(180).nullable(),
+    radius_m: z.number().int().min(50).max(2000),
+  })
+  .strict()
+  .refine((v) => !v.required || (v.lat !== null && v.lng !== null), 'the cafe position is needed to switch this on');

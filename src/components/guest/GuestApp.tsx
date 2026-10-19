@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatPaise } from '@/lib/money';
-import { ApiFailure, askBill, callWaiter, placeOrder } from '@/lib/guest/client';
+import { ApiFailure, askBill, callWaiter, currentPosition, placeOrder } from '@/lib/guest/client';
 import type { MenuData, MenuItem, PayMode, WaiterReason } from '@/lib/guest/types';
 import { errorMessageKey, t } from '@/lib/i18n';
 import { trackEvent, type TrackIds } from '@/lib/guest/analytics';
@@ -99,7 +99,14 @@ export function GuestApp({
     setOrderError(null);
     const payload = { items: cart.lines.map((l) => ({ item_id: l.id, qty: l.qty, ...(l.note?.trim() ? { note: l.note.trim() } : {}) })), note: cart.note.trim() || undefined };
     try {
-      await placeOrder({ slug, token, ...payload, idempotency_key: idempotencyKeyFor(slug, JSON.stringify(payload)) });
+      const idem = idempotencyKeyFor(slug, JSON.stringify(payload));
+      try {
+        await placeOrder({ slug, token, ...payload, idempotency_key: idem });
+      } catch (first) {
+        // A cafe that only takes orders from guests who are there asks for the position; then we retry once with it.
+        if (!(first instanceof ApiFailure) || first.key !== 'location_required') throw first;
+        await placeOrder({ slug, token, ...payload, idempotency_key: idem, geo: await currentPosition() });
+      }
       forgetIdempotencyKey(slug);
       cart.clear();
       setSheet(null);

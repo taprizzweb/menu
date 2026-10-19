@@ -20,6 +20,10 @@ export async function POST(req: Request) {
     // Only wrong-QR-token attempts (guessing) count against an address: many honest guests share one cafe wifi IP.
     const guessKey = `tok:${ctx.ipHash}`;
     await guard(guessKey, 20, 600);
+    const where = await rpc<string>('guest_check_location', { p_slug: body.slug, p_lat: body.geo?.lat ?? null, p_lng: body.geo?.lng ?? null, p_acc: body.geo?.accuracy ?? null });
+    if (where === 'required') throw new ApiError(403, 'location_required');
+    if (where === 'inaccurate') throw new ApiError(403, 'location_inaccurate');
+    if (where === 'too_far') throw new ApiError(403, 'too_far_from_restaurant');
     const r = await rpc<PlaceResult>('guest_place_order', {
       p_slug: body.slug,
       p_token: body.token,

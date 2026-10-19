@@ -406,3 +406,35 @@ describe('POST /api/guest/event (menu analytics)', () => {
     expect(await db.admin(`select 1 from public.menu_events where visit_id = $1`, [v])).toHaveLength(0);
   });
 });
+
+describe('orders only near the cafe (POST /api/guest/order)', () => {
+  const CAFE = { lat: 26.9124, lng: 75.7873 };
+  const on = (v: boolean) => db.admin(`update public.restaurants set geo_required = $2, geo_lat = $3, geo_lng = $4, geo_radius_m = 150 where id = $1`, [w.A.rid, v, CAFE.lat, CAFE.lng]);
+  it('asks for the position, refuses far or fuzzy positions, accepts a near one, and never stores it', async () => {
+    await on(true);
+    try {
+      const t = await freshTable();
+      const post = (extra: Record<string, unknown>) => orderPOST(req('/api/guest/order', orderBody(t, extra), { ip: uniqueIp() }));
+      const none = await post({});
+      expect(none.status).toBe(403);
+      expect((await json(none)).error.key).toBe('location_required');
+      const far = await post({ geo: { lat: CAFE.lat + 0.05, lng: CAFE.lng, accuracy: 20 } });
+      expect((await json(far)).error.key).toBe('too_far_from_restaurant');
+      const fuzzy = await post({ geo: { lat: CAFE.lat, lng: CAFE.lng, accuracy: 800 } });
+      expect((await json(fuzzy)).error.key).toBe('location_inaccurate');
+      expect(await db.admin(`select 1 from public.orders where session_id in (select id from public.table_sessions where table_id = $1)`, [t.id])).toHaveLength(0);
+      const ok = await post({ geo: { lat: CAFE.lat + 0.0004, lng: CAFE.lng, accuracy: 25 } });
+      expect(ok.status).toBe(200);
+      // the position is not kept anywhere in the order data
+      const cols = await db.admin<{ column_name: string }>(`select column_name from information_schema.columns where table_schema = 'public' and table_name in ('orders','table_sessions','order_items') and column_name ~* '(lat|lng|geo)'`);
+      expect(cols).toEqual([]);
+      expect((await orderPOST(req('/api/guest/order', { ...orderBody(t), geo: { lat: 200, lng: 0, accuracy: 1 } }, { ip: uniqueIp() }))).status).toBe(400);
+    } finally {
+      await on(false);
+    }
+  });
+  it('does not ask anything of cafes that did not switch it on', async () => {
+    const t = await freshTable();
+    expect((await orderPOST(req('/api/guest/order', orderBody(t), { ip: uniqueIp() }))).status).toBe(200);
+  });
+});

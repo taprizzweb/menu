@@ -50,7 +50,7 @@ export function securityHeaders(opts: CspOptions): Record<string, string> {
     'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()',
     'Cross-Origin-Opener-Policy': 'same-origin',
     // legacy fallback for browsers that ignore frame-ancestors
     'X-Frame-Options': 'DENY',

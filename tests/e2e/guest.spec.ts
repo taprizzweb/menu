@@ -302,6 +302,45 @@ test.describe('security on the real server', () => {
   });
 });
 
+test.describe('orders only near the cafe', () => {
+  const CAFE = { latitude: 26.9124, longitude: 75.7873 };
+  test('a guest far away or without location access is told why; a guest at the cafe orders normally', async ({ page, context, browser }) => {
+    await q(`update public.restaurants set geo_required = true, geo_lat = $1, geo_lng = $2, geo_radius_m = 150 where slug = 'spice-garden'`, [CAFE.latitude, CAFE.longitude]);
+    try {
+      // no location permission at all
+      const noPerm = await browser.newContext(test.info().project.use as never);
+      const p2 = await noPerm.newPage();
+      try {
+        const t2 = await newTable();
+        await open(p2, t2);
+        await add(p2, 'Paneer Tikka');
+        await placeOrderFromCart(p2);
+        // a refusal answers at once; a browser that never answers the permission prompt ends after our 12 s timeout
+        await expect(dialog(p2).getByRole('alert')).toContainText(/Location access was not allowed|could not share its location/, { timeout: 25_000 });
+        expect(await ordersOf(t2.id)).toHaveLength(0);
+      } finally {
+        await noPerm.close();
+      }
+
+      const t = await newTable();
+      await context.grantPermissions(['geolocation']);
+      await context.setGeolocation({ latitude: CAFE.latitude + 0.05, longitude: CAFE.longitude, accuracy: 20 });
+      await open(page, t);
+      await add(page, 'Paneer Tikka');
+      await placeOrderFromCart(page);
+      await expect(dialog(page).getByRole('alert')).toContainText('too far away');
+      expect(await ordersOf(t.id)).toHaveLength(0);
+
+      await context.setGeolocation({ latitude: CAFE.latitude + 0.0004, longitude: CAFE.longitude, accuracy: 25 });
+      await dialog(page).getByRole('button', { name: 'Place order' }).click();
+      await expect(page.getByRole('heading', { name: 'Your orders' })).toBeVisible();
+      expect(await ordersOf(t.id)).toHaveLength(1);
+    } finally {
+      await q(`update public.restaurants set geo_required = false, geo_lat = null, geo_lng = null where slug = 'spice-garden'`);
+    }
+  });
+});
+
 test.describe('dish details', () => {
   test('a dish with a photo opens a details sheet with the full description and an Add button; favourites show bestsellers', async ({ page }) => {
     const t = await newTable();
