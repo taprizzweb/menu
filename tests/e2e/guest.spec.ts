@@ -124,6 +124,97 @@ test.describe('shared table link and footer', () => {
   });
 });
 
+test.describe('sizes and options', () => {
+  async function seedShake() {
+    const name = `Oreo Shake ${Math.random().toString(36).slice(2, 5)}`;
+    const [cat] = await q<{ id: string; restaurant_id: string }>(`select id, restaurant_id from public.categories where restaurant_id = (select id from public.restaurants where slug = 'spice-garden') and active order by sort_order limit 1`);
+    const [it] = await q<{ id: string }>(`insert into public.items (restaurant_id, category_id, name_en, price_paise) values ($1, $2, $3, 12000) returning id`, [cat!.restaurant_id, cat!.id, name]);
+    await q(`insert into public.item_variants (restaurant_id, item_id, name, price_paise, sort_order, is_available) values ($1, $2, 'Small', 12000, 1, true), ($1, $2, 'Large', 20000, 2, true), ($1, $2, 'XL', 25000, 3, false)`, [cat!.restaurant_id, it!.id]);
+    const [g] = await q<{ id: string }>(`insert into public.item_option_groups (restaurant_id, item_id, name, required, max_select, sort_order) values ($1, $2, 'Topping', true, 1, 1) returning id`, [cat!.restaurant_id, it!.id]);
+    await q(`insert into public.item_options (restaurant_id, group_id, name, price_delta_paise, sort_order) values ($1, $2, 'Oreo', 0, 1), ($1, $2, 'Choco', 1500, 2)`, [cat!.restaurant_id, g!.id]);
+    const [g2] = await q<{ id: string }>(`insert into public.item_option_groups (restaurant_id, item_id, name, required, max_select, sort_order) values ($1, $2, 'Extras', false, 2, 2) returning id`, [cat!.restaurant_id, it!.id]);
+    await q(`insert into public.item_options (restaurant_id, group_id, name, price_delta_paise, sort_order) values ($1, $2, 'Cream', 1000, 1), ($1, $2, 'Nuts', 2000, 2), ($1, $2, 'Syrup', 500, 3)`, [cat!.restaurant_id, g2!.id]);
+    return { id: it!.id, name };
+  }
+
+  test('tap a dish, choose a size and options, see the price, order; staff get the full name', async ({ page }) => {
+    const dish = await seedShake();
+    const t = await newTable();
+    try {
+      await open(page, t);
+      const dishCard = page.locator('li', { has: page.getByRole('heading', { name: dish.name, level: 3 }) });
+      await expect(dishCard).toContainText('from ₹120');
+      await page.getByRole('button', { name: `Add ${dish.name}`, exact: true }).click();
+      await expect(dialog(page).getByRole('group', { name: /Choose a size/ })).toBeVisible();
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-choose-1-sheet.png` });
+
+      // nothing is pre-selected: adding without choosing explains what is missing
+      await dialog(page).getByRole('button', { name: /^Add to cart/ }).click({ force: true }); // aria-disabled, not disabled: it must still explain
+      await expect(dialog(page).getByText('Please choose a size.')).toBeVisible();
+      await expect(dialog(page).getByRole('radio', { name: /XL/ })).toBeDisabled(); // sold-out size
+      await dialog(page).getByRole('radio', { name: /^Large/ }).check();
+      await dialog(page).getByRole('button', { name: /^Add to cart/ }).click({ force: true });
+      await expect(dialog(page).getByText('Please choose from "Topping".')).toBeVisible();
+      await dialog(page).getByRole('radio', { name: /^Choco/ }).check();
+      await dialog(page).getByRole('checkbox', { name: /^Cream/ }).check();
+      await dialog(page).getByRole('checkbox', { name: /^Nuts/ }).check();
+      await expect(dialog(page).getByRole('checkbox', { name: /^Syrup/ })).toBeDisabled(); // at most 2 extras
+      // 200 + 15 + 10 + 20 = 245
+      await expect(dialog(page).getByRole('button', { name: 'Add to cart · ₹245' })).toBeVisible();
+      await dialog(page).getByRole('button', { name: `Add one more ${dish.name}` }).click();
+      await expect(dialog(page).getByRole('button', { name: 'Add to cart · ₹490' })).toBeVisible();
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-choose-2-chosen.png` });
+      await dialog(page).getByRole('button', { name: /^Add to cart/ }).click();
+      await expect(dialog(page)).toHaveCount(0);
+
+      // the card shows how many are in the cart; a second, different choice is its own line
+      await expect(dishCard.getByLabel('2 in your cart')).toBeVisible();
+      await page.getByRole('button', { name: `Add ${dish.name}`, exact: true }).click();
+      await dialog(page).getByRole('radio', { name: /^Small/ }).check();
+      await dialog(page).getByRole('radio', { name: /^Oreo/ }).check();
+      await dialog(page).getByRole('button', { name: 'Add to cart · ₹120' }).click();
+
+      await page.getByRole('button', { name: /View cart/ }).click();
+      await expect(dialog(page)).toContainText('Large · Choco, Cream, Nuts');
+      await expect(dialog(page)).toContainText('Small · Oreo');
+      await expect(dialog(page)).toContainText('₹610'); // 2 x 245 + 120
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-choose-3-cart.png` });
+      await dialog(page).getByRole('button', { name: 'Place order' }).click();
+      await expect(page.getByRole('heading', { name: 'Your orders' })).toBeVisible();
+
+      const rows = await q<{ n: string; p: number; qty: number }>(`select name_en_snapshot n, unit_price_paise p, qty from public.order_items oi join public.orders o on o.id = oi.order_id where o.table_id = $1 order by p desc`, [t.id]);
+      expect(rows).toEqual([
+        { n: `${dish.name} (Large) + Choco, Cream, Nuts`, p: 24500, qty: 2 },
+        { n: `${dish.name} (Small) + Oreo`, p: 12000, qty: 1 },
+      ]);
+      // the guest's own order list shows the full name too
+      await expect(page.getByText(`${dish.name} (Large) + Choco, Cream, Nuts`)).toBeVisible();
+      await staff(OWNER, 'staff_close_session', { p_session_id: (await sessionOf(t.id))!, p_force: true, p_reason: 'test' });
+    } finally {
+      await q(`delete from public.items where id = $1`, [dish.id]);
+    }
+  });
+
+  test('the choose sheet has no accessibility violations and works with the keyboard', async ({ page }) => {
+    const dish = await seedShake();
+    try {
+      await open(page, await newTable());
+      const opener = page.getByRole('button', { name: `Add ${dish.name}`, exact: true });
+      await opener.focus();
+      await page.keyboard.press('Enter');
+      await expect(dialog(page)).toBeVisible();
+      await page.waitForTimeout(400);
+      const r = await new AxeBuilder({ page: page as unknown as AxePage }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+      expect(r.violations.map((v) => `${v.id}: ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
+      await page.keyboard.press('Escape');
+      await expect(dialog(page)).toHaveCount(0);
+      await expect(opener).toBeFocused();
+    } finally {
+      await q(`delete from public.items where id = $1`, [dish.id]);
+    }
+  });
+});
+
 test.describe('guest journey', () => {
   test('scan → order → live status → call waiter → ask bill → paid → thank-you', async ({ page }, info) => {
     const t = await newTable();

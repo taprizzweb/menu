@@ -1,6 +1,7 @@
 'use client';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { formatPaise } from '@/lib/money';
+import { fromPrice, isCustomisable } from '@/lib/guest/options';
 import type { MenuCategory, MenuItem } from '@/lib/guest/types';
 import type { Translator } from '@/lib/i18n';
 import type { TrackIds } from '@/lib/guest/analytics';
@@ -12,7 +13,12 @@ type Filter = 'veg' | 'jain' | 'bestseller';
 interface Ordering {
   t: Translator; canOrder: boolean; imageBase: string;
   qtyOf: (id: string) => number; onAdd: (id: string) => void; onSet: (id: string, qty: number) => void;
+  /** a dish with sizes or options: open the choose sheet instead of adding straight away */
+  onCustomise: (item: MenuItem) => void;
 }
+
+/** "₹250", or "from ₹120" for a dish that comes in sizes. */
+const priceText = (item: MenuItem, t: Translator): string => ((item.variants?.length ?? 0) > 0 ? t('item.from', { price: formatPaise(fromPrice(item)) }) : formatPaise(item.price_paise));
 
 /** Photo with a fixed aspect box (no layout shift) and a tinted letter tile behind it, so a slow or missing image never shows a broken icon. */
 function Photo({ item, imageBase, ratio, sizes }: { item: MenuItem; imageBase: string; ratio: string; sizes?: string }) {
@@ -45,6 +51,14 @@ function AddControl({ item, o, large = false }: { item: MenuItem; o: Ordering; l
   const name = item.name_en;
   if (!item.is_available) return <span className="flex min-h-11 items-center text-sm font-bold text-stone-600">{t('item.soldOut')}</span>;
   if (!o.canOrder) return null;
+  if (isCustomisable(item)) {
+    // a dish with sizes / options always opens its choose sheet; the badge shows how many are already in the cart
+    return (
+      <button type="button" onClick={(e) => { e.stopPropagation(); o.onCustomise(item); }} aria-label={t('item.addNamed', { name })} className={`flex min-h-11 items-center justify-center gap-1 rounded-xl bg-accent px-4 text-sm font-bold text-white shadow-sm active:scale-95 motion-reduce:active:scale-100 ${large ? 'w-full min-h-12 text-base' : ''}`}>
+        <IconPlus /> {t('item.add')}{qty > 0 && <span className="ml-1 rounded-full bg-white px-2 py-0.5 text-xs font-extrabold text-stone-900" aria-label={t('item.inCart', { n: String(qty) })}>{qty}</span>}
+      </button>
+    );
+  }
   if (qty === 0) {
     return (
       <button type="button" onClick={(e) => { e.stopPropagation(); onAdd(item.id); }} aria-label={t('item.addNamed', { name })} className={`flex min-h-11 items-center justify-center gap-1 rounded-xl bg-accent px-4 text-sm font-bold text-white shadow-sm active:scale-95 motion-reduce:active:scale-100 ${large ? 'w-full min-h-12 text-base' : ''}`}>
@@ -73,7 +87,7 @@ const ItemCard = memo(function ItemCard({ item, o, onOpen }: { item: MenuItem; o
   );
   const foot = (
     <div className="mt-3 flex items-center justify-between gap-2">
-      <span className="text-lg font-bold tabular-nums">{formatPaise(item.price_paise)}</span>
+      <span className="text-lg font-bold tabular-nums">{priceText(item, t)}</span>
       <AddControl item={item} o={o} />
     </div>
   );
@@ -87,7 +101,7 @@ const ItemCard = memo(function ItemCard({ item, o, onOpen }: { item: MenuItem; o
           <div className="mt-2"><SpiceDots level={item.spice} t={t} /></div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <span className="text-lg font-bold tabular-nums">{formatPaise(item.price_paise)}</span>
+          <span className="text-lg font-bold tabular-nums">{priceText(item, t)}</span>
           <AddControl item={item} o={o} />
         </div>
       </li>
@@ -123,7 +137,7 @@ function FavouriteCard({ item, o, onOpen }: { item: MenuItem; o: Ordering; onOpe
       <Photo item={item} imageBase={o.imageBase} ratio="aspect-[5/4]" />
       <span className="block p-3">
         <span className="block font-serif text-base font-semibold leading-snug text-stone-900">{item.name_en}</span>
-        <span className="mt-1 block text-base font-bold tabular-nums text-stone-900">{formatPaise(item.price_paise)}</span>
+        <span className="mt-1 block text-base font-bold tabular-nums text-stone-900">{priceText(item, t)}</span>
       </span>
     </>
   );
@@ -148,7 +162,7 @@ function DetailsSheet({ item, o, onClose }: { item: MenuItem | null; o: Ordering
           <div className="space-y-3 px-5 pb-1 pt-4">
             <div className="flex flex-wrap items-center gap-2"><DietMark diet={it.diet} t={t} /><Badges item={it} t={t} /><SpiceDots level={it.spice} t={t} /></div>
             {it.description_en && <p className="text-[15px] leading-relaxed text-stone-800">{it.description_en}</p>}
-            <p className="font-serif text-2xl font-bold tabular-nums">{formatPaise(it.price_paise)}</p>
+            <p className="font-serif text-2xl font-bold tabular-nums">{priceText(it, t)}</p>
             <AddControl item={it} o={o} large />
           </div>
         </div>
@@ -159,8 +173,8 @@ function DetailsSheet({ item, o, onClose }: { item: MenuItem | null; o: Ordering
 
 const initial = (s: string) => s.trim().charAt(0).toUpperCase();
 
-export function MenuView({ categories, t, canOrder, imageBase, qtyOf, onAdd, onSet, onTrack }: Ordering & { categories: MenuCategory[]; onTrack?: (e: MenuEvent, ids?: TrackIds) => void }) {
-  const o: Ordering = { t, canOrder, imageBase, qtyOf, onAdd, onSet };
+export function MenuView({ categories, t, canOrder, imageBase, qtyOf, onAdd, onSet, onCustomise, onTrack }: Ordering & { categories: MenuCategory[]; onTrack?: (e: MenuEvent, ids?: TrackIds) => void }) {
+  const o: Ordering = { t, canOrder, imageBase, qtyOf, onAdd, onSet, onCustomise };
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
   const [active, setActive] = useState<string | null>(null);

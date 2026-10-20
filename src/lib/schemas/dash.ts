@@ -30,6 +30,26 @@ export const itemSave = z
     is_available: z.boolean().optional(),
   })
   .strict();
+export const itemChoicesSave = z
+  .object({
+    item_id: uuid,
+    variants: z.array(z.object({ id: uuid.optional(), name: name(30), price_paise: z.number().int().min(0).max(10_000_000), is_available: z.boolean() }).strict()).max(8),
+    groups: z
+      .array(
+        z
+          .object({
+            id: uuid.optional(),
+            name: name(40),
+            required: z.boolean(),
+            max_select: z.number().int().min(1).max(20),
+            options: z.array(z.object({ id: uuid.optional(), name: name(40), price_delta_paise: z.number().int().min(0).max(5_000_000) }).strict()).min(1).max(20),
+          })
+          .strict()
+          .refine((g) => g.max_select <= g.options.length, { message: 'max_select cannot be more than the number of options' }),
+      )
+      .max(6),
+  })
+  .strict();
 export const itemsReorder = z.object({ category_id: uuid, ids: z.array(uuid).min(1).max(300) }).strict();
 export const bulkPrice = z
   .object({ item_ids: z.array(uuid).min(1).max(300), mode: z.enum(['percent', 'add', 'set']), value: z.number().finite().min(-100_000_000).max(100_000_000) })
@@ -50,6 +70,7 @@ export const menuImport = z
             bestseller: z.boolean(),
             chef_pick: z.boolean(),
             available: z.boolean(),
+            sizes: z.array(z.object({ name: name(30), price_paise: z.number().int().min(0).max(10_000_000) }).strict()).max(8).optional(),
           })
           .strict(),
       )

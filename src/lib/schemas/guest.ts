@@ -16,7 +16,18 @@ export const orderBody = z
     slug,
     token,
     items: z
-      .array(z.object({ item_id: uuid, qty: z.number().int().min(1).max(10), note: text(100).optional() }).strict())
+      .array(
+        z
+          .object({
+            item_id: uuid,
+            qty: z.number().int().min(1).max(10),
+            note: text(100).optional(),
+            // the guest's size and extras: ids only; the price is always worked out on the server
+            variant_id: uuid.optional(),
+            option_ids: z.array(uuid).max(20).optional(),
+          })
+          .strict(),
+      )
       .min(1)
       .max(25),
     note: text(200).optional(),

@@ -494,3 +494,29 @@ describe('POST /api/guest/table', () => {
     expect((await tablePOST(req('/api/guest/table', { slug: w.A.slug, token: link, table: 'LK1' }, { ip: uniqueIp(), origin: 'https://evil.example' }))).status).toBe(403);
   });
 });
+
+describe('POST /api/guest/order with sizes and options', () => {
+  it('prices the order from the server: size plus extras, never from the request', async () => {
+    const t = await freshTable();
+    const [dish] = await db.admin<{ id: string }>(`insert into public.items (restaurant_id, category_id, name_en, price_paise) values ($1, $2, 'API Shake', 100) returning id`, [w.A.rid, w.A.catId]);
+    const [small, large] = await db.admin<{ id: string }>(`insert into public.item_variants (restaurant_id, item_id, name, price_paise, sort_order) values ($1, $2, 'Small', 12000, 1), ($1, $2, 'Large', 20000, 2) returning id`, [w.A.rid, dish!.id]);
+    const [grp] = await db.admin<{ id: string }>(`insert into public.item_option_groups (restaurant_id, item_id, name, required, max_select) values ($1, $2, 'Topping', true, 1) returning id`, [w.A.rid, dish!.id]);
+    const [oreo, choco] = await db.admin<{ id: string }>(`insert into public.item_options (restaurant_id, group_id, name, price_delta_paise, sort_order) values ($1, $2, 'Oreo', 0, 1), ($1, $2, 'Choco', 1500, 2) returning id`, [w.A.rid, grp!.id]);
+    const line = (extra: Record<string, unknown>) => ({ item_id: dish!.id, qty: 2, ...extra });
+    const res = await orderPOST(req('/api/guest/order', orderBody(t, { items: [line({ variant_id: large!.id, option_ids: [choco!.id] })] }), { ip: uniqueIp() }));
+    expect(res.status).toBe(200);
+    expect(await json(res)).toMatchObject({ total_paise: 2 * (20000 + 1500), status: 'placed' });
+    const [oi] = await db.admin<any>(`select name_en_snapshot n, unit_price_paise p from public.order_items oi join public.orders o on o.id = oi.order_id where o.table_id = $1`, [t.id]);
+    expect(oi).toEqual({ n: 'API Shake (Large) + Choco', p: 21500 });
+
+    // missing size / missing required topping / unknown ids / extra fields are all refused with the right status
+    expect((await orderPOST(req('/api/guest/order', orderBody(t, { items: [line({ option_ids: [oreo!.id] })] }), { ip: uniqueIp() }))).status).toBe(400);
+    expect((await orderPOST(req('/api/guest/order', orderBody(t, { items: [line({ variant_id: small!.id })] }), { ip: uniqueIp() }))).status).toBe(400);
+    expect((await orderPOST(req('/api/guest/order', orderBody(t, { items: [line({ variant_id: randomUUID(), option_ids: [oreo!.id] })] }), { ip: uniqueIp() }))).status).toBe(409);
+    expect((await orderPOST(req('/api/guest/order', orderBody(t, { items: [line({ variant_id: small!.id, option_ids: ['nope'] })] }), { ip: uniqueIp() }))).status).toBe(400);
+    expect((await orderPOST(req('/api/guest/order', orderBody(t, { items: [line({ variant_id: small!.id, option_ids: [oreo!.id], price_paise: 1 })] }), { ip: uniqueIp() }))).status).toBe(400);
+    expect((await orderPOST(req('/api/guest/order', orderBody(t, { items: [line({ variant_id: small!.id, option_ids: Array.from({ length: 21 }, () => randomUUID()) })] }), { ip: uniqueIp() }))).status).toBe(400);
+    // a plain dish is unchanged
+    expect((await orderPOST(req('/api/guest/order', orderBody(await freshTable()), { ip: uniqueIp() }))).status).toBe(200);
+  });
+});

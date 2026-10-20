@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     const r = await rpc<PlaceResult>('guest_place_order', {
       p_slug: body.slug,
       p_token: body.token,
-      p_items: body.items.map((i) => ({ item_id: i.item_id, qty: i.qty, note: i.note || null })),
+      p_items: body.items.map((i) => ({ item_id: i.item_id, qty: i.qty, note: i.note || null, variant_id: i.variant_id ?? null, option_ids: i.option_ids ?? null })),
       p_note: body.note || null,
       p_idem: body.idempotency_key,
       p_ip_hash: ctx.ipHash,

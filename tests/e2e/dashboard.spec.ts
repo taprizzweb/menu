@@ -174,6 +174,76 @@ test.describe('menu manager', () => {
   });
 });
 
+test.describe('dish sizes and options', () => {
+  test('add sizes and an option group to a dish, see them in the list, change them, and remove them', async ({ page }) => {
+    await loginAs(page, 'owner');
+    const cat = uniq('SizeCat');
+    const dish = uniq('Shake');
+    await page.getByRole('button', { name: 'Add category' }).click();
+    await dialog(page).getByLabel('Category name').fill(cat);
+    await dialog(page).getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('heading', { name: cat })).toBeVisible();
+
+    await page.getByRole('region', { name: cat }).getByRole('button', { name: 'Add dish' }).click();
+    await dialog(page).getByLabel('Dish name').fill(dish);
+    // ready-made size names, the owner only adds prices
+    await dialog(page).getByRole('button', { name: 'S / M / L / XL' }).click();
+    await expect(dialog(page).getByLabel('Size 4 name')).toHaveValue('XL');
+    await expect(dialog(page).getByLabel('Price (₹)')).toBeDisabled();
+    // a size without a price is explained, nothing is saved
+    await dialog(page).getByRole('button', { name: 'Save dish' }).click();
+    await expect(dialog(page).getByRole('alert')).toContainText('price of "Small"');
+    for (const [i, price] of [['1', '120'], ['2', '160'], ['3', '200'], ['4', '240']] as const) await dialog(page).getByLabel(`Size ${i} price in rupees`).fill(price);
+    await dialog(page).getByLabel('Size 4 available').uncheck();
+
+    await dialog(page).getByRole('button', { name: 'Add an option group' }).click();
+    await dialog(page).getByLabel('Group 1 title').fill('Choose your topping');
+    await dialog(page).getByLabel('Group 1 is required').check();
+    await dialog(page).getByLabel('Group 1 choice 1 name').fill('Oreo');
+    await dialog(page).getByRole('button', { name: 'Add a choice' }).click();
+    await dialog(page).getByLabel('Group 1 choice 2 name').fill('Choco chips');
+    await dialog(page).getByLabel('Group 1 choice 2 extra price in rupees').fill('15');
+    await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-dash-sizes-editor.png`, fullPage: true });
+    await dialog(page).getByRole('button', { name: 'Save dish' }).click();
+    await expect(dishRow(page, dish)).toContainText('from ₹120 · 4 sizes');
+    await expect(dishRow(page, dish)).toContainText('1 option group');
+
+    const [d] = await q<{ id: string; price_paise: number }>(`select id, price_paise from public.items where name_en = $1`, [dish]);
+    expect(d!.price_paise).toBe(12000);
+    const v = await q<{ name: string; price_paise: number; is_available: boolean }>(`select name, price_paise, is_available from public.item_variants where item_id = $1 order by sort_order`, [d!.id]);
+    expect(v).toEqual([{ name: 'Small', price_paise: 12000, is_available: true }, { name: 'Medium', price_paise: 16000, is_available: true }, { name: 'Large', price_paise: 20000, is_available: true }, { name: 'XL', price_paise: 24000, is_available: false }]);
+    const o = await q<{ name: string; required: boolean; max_select: number; options: string }>(`select g.name, g.required, g.max_select, (select string_agg(o.name || ':' || o.price_delta_paise, ',' order by o.sort_order) from public.item_options o where o.group_id = g.id) as options from public.item_option_groups g where g.item_id = $1`, [d!.id]);
+    expect(o).toEqual([{ name: 'Choose your topping', required: true, max_select: 1, options: 'Oreo:0,Choco chips:1500' }]);
+
+    // reopen: everything is there; change a price and remove the group; the other sizes keep their rows
+    const before = await q<{ id: string }>(`select id from public.item_variants where item_id = $1 order by sort_order`, [d!.id]);
+    await dishRow(page, dish).getByRole('button', { name: `Edit ${dish}` }).click();
+    await expect(dialog(page).getByLabel('Size 2 name')).toHaveValue('Medium');
+    await expect(dialog(page).getByLabel('Group 1 choice 2 extra price in rupees')).toHaveValue('15');
+    await dialog(page).getByLabel('Size 2 price in rupees').fill('170');
+    await dialog(page).getByRole('button', { name: 'Remove this group' }).click();
+    await dialog(page).getByRole('button', { name: 'Save dish' }).click();
+    await expect(dishRow(page, dish)).not.toContainText('option group');
+    const after = await q<{ id: string; price_paise: number }>(`select id, price_paise from public.item_variants where item_id = $1 order by sort_order`, [d!.id]);
+    expect(after.map((x) => x.id)).toEqual(before.map((x) => x.id));
+    expect(after[1]!.price_paise).toBe(17000);
+    expect((await q<{ n: number }>(`select count(*)::int n from public.item_option_groups where item_id = $1`, [d!.id]))[0]!.n).toBe(0);
+
+    // the guest menu shows the dish "from" its cheapest size
+    await page.goto('/spice-garden');
+    await expect(page.locator('li', { has: page.getByRole('heading', { name: dish, level: 3 }) })).toContainText('from ₹120');
+
+    // removing all sizes makes it a plain dish again, at the price typed in the Price field
+    await page.goto('/dash/menu');
+    await dishRow(page, dish).getByRole('button', { name: `Edit ${dish}` }).click();
+    for (let i = 0; i < 4; i++) await dialog(page).getByLabel('Size 1 name').locator('xpath=ancestor::li').getByRole('button', { name: 'Remove size 1' }).click();
+    await dialog(page).getByLabel('Price (₹)').fill('99');
+    await dialog(page).getByRole('button', { name: 'Save dish' }).click();
+    await expect(dishRow(page, dish)).toContainText('₹99');
+    await expect(dishRow(page, dish)).not.toContainText('sizes');
+  });
+});
+
 test.describe('tables and QR codes', () => {
   test('shared table link: turn on, see link and QR, print the card, new link, turn off', async ({ page }) => {
     await q(`update public.restaurants set table_token = null where slug = 'spice-garden'`);

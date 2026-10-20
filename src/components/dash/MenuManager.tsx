@@ -4,11 +4,13 @@ import { useMemo, useRef, useState } from 'react';
 import { Alert, IconPlus, Notice, Sheet, btnPrimary, btnSecondary } from '@/components/guest/ui';
 import { formatPaise, parseRupeesToPaise } from '@/lib/money';
 import { SAMPLE_CSV, menuToCsv, parseMenuCsv, type ParsedMenuCsv } from '@/lib/dash/csv';
+import { choicesPayload, draftsFromItem, type ChoicesPayload, type Drafts } from '@/lib/dash/choices';
 import { compressToWebp } from '@/lib/dash/image';
+import { ChoicesEditor } from './ChoicesEditor';
 import { dashPost, errText, inputCls, useDashData } from './api';
 
 type Diet = 'veg' | 'nonveg' | 'egg' | 'jain';
-interface Item { id: string; name: string; description: string | null; price_paise: number; diet: Diet; spice: number; image_path: string | null; is_available: boolean; is_bestseller: boolean; is_chef_pick: boolean }
+interface Item { id: string; name: string; description: string | null; price_paise: number; diet: Diet; spice: number; image_path: string | null; is_available: boolean; is_bestseller: boolean; is_chef_pick: boolean; variants?: { id: string; name: string; price_paise: number; is_available: boolean }[]; groups?: { id: string; name: string; required: boolean; max_select: number; options: { id: string; name: string; price_delta_paise: number }[] }[] }
 interface Category { id: string; name: string; active: boolean; items: Item[] }
 interface MenuData { categories: Category[] }
 
@@ -125,7 +127,8 @@ export function MenuManager({ restaurantId, supabase, imageBase }: { restaurantI
                   <div className="min-w-0 flex-1 basis-40">
                     <p className="font-semibold">{it.name}</p>
                     <p className="text-sm text-stone-700">
-                      {formatPaise(it.price_paise)} · {DIET_LABEL[it.diet]}{it.spice > 0 ? ` · Spice ${it.spice}` : ''}
+                      {(it.variants?.length ?? 0) > 0 ? `from ${formatPaise(it.price_paise)} · ${it.variants!.length} sizes` : formatPaise(it.price_paise)} · {DIET_LABEL[it.diet]}{it.spice > 0 ? ` · Spice ${it.spice}` : ''}
+                      {(it.groups?.length ?? 0) > 0 && ` · ${it.groups!.length} option group${it.groups!.length === 1 ? '' : 's'}`}
                       {it.is_bestseller && ' · Bestseller'}{it.is_chef_pick && " · Chef's pick"}
                     </p>
                   </div>
@@ -166,7 +169,20 @@ export function MenuManager({ restaurantId, supabase, imageBase }: { restaurantI
         supabase={supabase}
         imageBase={imageBase}
         onClose={() => setItemDlg(null)}
-        onSave={async (body) => { const ok = await run(() => dashPost('item-save', body), 'Saved.'); if (ok) setItemDlg(null); return ok; }}
+        onSave={async (body, choices, hadChoices) => {
+          const ok = await run(async () => {
+            // nothing to send for a dish that has no sizes or options and never had any
+            const hasChoices = hadChoices || choices.variants.length > 0 || choices.groups.length > 0;
+            const send = (itemId: string) => dashPost('item-choices-save', { item_id: itemId, variants: choices.variants, groups: choices.groups });
+            // An existing dish gets its sizes first, so that removing every size lets the typed price stand; a new dish needs its id first.
+            const existing = typeof body.id === 'string' ? body.id : null;
+            if (existing && hasChoices) await send(existing);
+            const saved = await dashPost<{ id: string }>('item-save', body);
+            if (!existing && hasChoices) await send(saved.id);
+          }, 'Saved.');
+          if (ok) setItemDlg(null);
+          return ok;
+        }}
         error={err}
       />
       <CategoryDialog state={catDlg} onClose={() => setCatDlg(null)} onSave={async (body) => { const ok = await run(() => dashPost('category-save', body), 'Saved.'); if (ok) setCatDlg(null); }} error={err} />
@@ -310,10 +326,11 @@ function CsvDialog({ open, onClose, onDone }: { open: boolean; onClose: () => vo
 
 function ItemDialog({ state, cats, restaurantId, supabase, imageBase, onClose, onSave, error }: {
   state: { item: Item | null; categoryId: string } | null; cats: Category[]; restaurantId: string; supabase: { url: string; anonKey: string }; imageBase: string;
-  onClose: () => void; onSave: (body: Record<string, unknown>) => Promise<boolean>; error: string | null;
+  onClose: () => void; onSave: (body: Record<string, unknown>, choices: Extract<ChoicesPayload, { ok: true }>, hadChoices: boolean) => Promise<boolean>; error: string | null;
 }) {
   const sb = useMemo(() => createBrowserClient(supabase.url, supabase.anonKey), [supabase.url, supabase.anonKey]);
   const [f, setF] = useState({ name: '', description: '', price: '', categoryId: '', diet: 'veg' as Diet, spice: 0, bestseller: false, chef: false, available: true, image: null as string | null });
+  const [choices, setChoices] = useState<Drafts>({ variants: [], groups: [] });
   const [local, setLocal] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -323,6 +340,7 @@ function ItemDialog({ state, cats, restaurantId, supabase, imageBase, onClose, o
     setSeen(key);
     const it = state?.item;
     setF({ name: it?.name ?? '', description: it?.description ?? '', price: it ? rupees(it.price_paise) : '', categoryId: state?.categoryId ?? '', diet: it?.diet ?? 'veg', spice: it?.spice ?? 0, bestseller: it?.is_bestseller ?? false, chef: it?.is_chef_pick ?? false, available: it?.is_available ?? true, image: it?.image_path ?? null });
+    setChoices(draftsFromItem(it));
     setLocal(null);
     setProblem(null);
   }
@@ -355,9 +373,12 @@ function ItemDialog({ state, cats, restaurantId, supabase, imageBase, onClose, o
       <form className="space-y-4" onSubmit={async (e) => {
         e.preventDefault();
         setProblem(null);
-        const paise = parseRupeesToPaise(f.price);
+        const parsed = choicesPayload(choices);
+        if (!parsed.ok) return setProblem(parsed.error);
+        // a dish with sizes takes its price from its cheapest size
+        const paise = parsed.cheapest ?? parseRupeesToPaise(f.price);
         if (paise === null || paise > 10_000_000) return setProblem('Enter the price in rupees, for example 250 or 249.50.');
-        await onSave({ id: state?.item?.id ?? null, category_id: f.categoryId, name: f.name, description: f.description || null, price_paise: paise, diet: f.diet, spice: f.spice, image_path: f.image, is_bestseller: f.bestseller, is_chef_pick: f.chef, is_available: f.available });
+        await onSave({ id: state?.item?.id ?? null, category_id: f.categoryId, name: f.name, description: f.description || null, price_paise: paise, diet: f.diet, spice: f.spice, image_path: f.image, is_bestseller: f.bestseller, is_chef_pick: f.chef, is_available: f.available }, parsed, (state?.item?.variants?.length ?? 0) + (state?.item?.groups?.length ?? 0) > 0);
       }}>
         <label className="block text-sm font-semibold">Dish name
           <input required maxLength={80} value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
@@ -369,8 +390,9 @@ function ItemDialog({ state, cats, restaurantId, supabase, imageBase, onClose, o
           <textarea maxLength={300} rows={3} value={f.description} onChange={(e) => set('description', e.target.value)} className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-base font-normal" />
         </label>
         <label className="block text-sm font-semibold">Price (₹)
-          <input required inputMode="decimal" value={f.price} onChange={(e) => set('price', e.target.value)} className={inputCls} />
+          <input required={choices.variants.length === 0} inputMode="decimal" value={choices.variants.length > 0 ? '' : f.price} disabled={choices.variants.length > 0} placeholder={choices.variants.length > 0 ? 'Set by the sizes below' : ''} onChange={(e) => set('price', e.target.value)} className={inputCls} />
         </label>
+        <ChoicesEditor value={choices} onChange={setChoices} />
         <fieldset>
           <legend className="text-sm font-semibold">Food type</legend>
           <div className="flex flex-wrap gap-x-4">

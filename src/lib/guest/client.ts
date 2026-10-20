@@ -37,7 +37,7 @@ const post = <T>(path: string, data: unknown) =>
 export interface PlaceOrderInput {
   slug: string;
   token: string;
-  items: { item_id: string; qty: number; note?: string }[];
+  items: { item_id: string; qty: number; note?: string; variant_id?: string; option_ids?: string[] }[];
   note?: string;
   idempotency_key: string;
   geo?: { lat: number; lng: number; accuracy: number };

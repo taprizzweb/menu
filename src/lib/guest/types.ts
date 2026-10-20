@@ -13,7 +13,15 @@ export interface MenuItem {
   is_available: boolean;
   is_bestseller: boolean;
   is_chef_pick: boolean;
+  /** sizes (Small / Large, Half / Full...), each with its own price; empty when the dish has no sizes */
+  variants?: MenuVariant[];
+  /** extra choices (sauce, extras...) */
+  option_groups?: MenuOptionGroup[];
 }
+
+export interface MenuVariant { id: string; name: string; price_paise: number; is_available: boolean }
+export interface MenuOption { id: string; name: string; price_delta_paise: number }
+export interface MenuOptionGroup { id: string; name: string; required: boolean; max_select: number; options: MenuOption[] }
 
 export interface MenuCategory {
   id: string;
@@ -77,7 +85,12 @@ export interface StatusData {
 }
 
 export interface CartLine {
+  /** the line's own key: the dish id for a plain dish, `dish|size|options` for a customised one */
   id: string;
+  /** the dish (older saved carts did not store it: it then equals `id`) */
+  item_id: string;
+  variant_id?: string;
+  option_ids?: string[];
   qty: number;
   note?: string;
 }

@@ -321,3 +321,67 @@ describe('data stays inside its restaurant', () => {
     for (const secret of ['Aroma Secret Special', 'cafe-aroma', t.qr_token, w.A.owner]) expect(all, secret).not.toContain(secret);
   });
 });
+
+describe('dish sizes and options through the API', () => {
+  const uuidish = '11111111-1111-4111-8111-111111111111';
+  const mkDish = async () => (await json(await post('item-save', { category_id: w.A.catId, name: `Sized ${randomUUID().slice(0, 5)}`, price_paise: 10000, diet: 'veg', spice: 0, is_bestseller: false, is_chef_pick: false }))).id as string;
+  const choices = (item: string, extra: Record<string, unknown> = {}) => ({
+    item_id: item,
+    variants: [{ name: 'Small', price_paise: 12000, is_available: true }, { name: 'Large', price_paise: 20000, is_available: true }],
+    groups: [{ name: 'Sauce', required: true, max_select: 1, options: [{ name: 'Peri peri', price_delta_paise: 0 }, { name: 'Cheese dip', price_delta_paise: 2000 }] }],
+    ...extra,
+  });
+
+  it('owner and manager save sizes and options; the menu read returns them; the dish price follows the cheapest size', async () => {
+    for (const uid of [w.A.owner, w.A.manager]) {
+      as(uid);
+      const id = await mkDish();
+      expect((await post('item-choices-save', choices(id))).status, uid).toBe(200);
+      const item = (await json(await get('menu'))).categories.flatMap((c: any) => c.items).find((i: any) => i.id === id);
+      expect(item.price_paise).toBe(12000);
+      expect(item.variants.map((v: any) => v.name)).toEqual(['Small', 'Large']);
+      expect(item.groups[0]).toMatchObject({ name: 'Sauce', required: true, max_select: 1 });
+      expect(item.groups[0].options.map((o: any) => o.name)).toEqual(['Peri peri', 'Cheese dip']);
+    }
+  });
+
+  it('waiters, the kitchen, other restaurants and signed-out visitors cannot change them', async () => {
+    as(w.A.owner);
+    const id = await mkDish();
+    for (const uid of [w.A.waiter, w.A.kitchen, w.stranger]) { as(uid); expect((await post('item-choices-save', choices(id))).status, uid).toBe(403); }
+    as(w.B.owner);
+    expect((await post('item-choices-save', choices(id))).status).toBe(404);
+    authState.userId = null;
+    expect((await post('item-choices-save', choices(id))).status).toBe(401);
+  });
+
+  it('refuses a bad shape: too many, wrong types, unknown fields, a maximum above the number of choices', async () => {
+    as(w.A.owner);
+    const id = await mkDish();
+    const many = Array.from({ length: 9 }, (_, i) => ({ name: `S${i}`, price_paise: 1, is_available: true }));
+    const bad: Record<string, unknown>[] = [
+      { variants: many },
+      { variants: [{ name: '', price_paise: 1, is_available: true }] },
+      { variants: [{ name: 'S', price_paise: -1, is_available: true }] },
+      { variants: [{ name: 'S', price_paise: 1.5, is_available: true }] },
+      { variants: [{ name: 'S', price: 1, is_available: true }] },
+      { groups: [{ name: 'G', required: true, max_select: 2, options: [{ name: 'a', price_delta_paise: 0 }] }] },
+      { groups: [{ name: 'G', required: true, max_select: 1, options: [] }] },
+      { groups: [{ name: 'G', required: 'yes', max_select: 1, options: [{ name: 'a', price_delta_paise: 0 }] }] },
+      { groups: [{ name: 'G', required: true, max_select: 1, options: [{ name: 'a', price_delta_paise: -1 }] }] },
+      { extra: 1 },
+    ];
+    for (const b of bad) expect((await post('item-choices-save', choices(id, b))).status, JSON.stringify(b).slice(0, 60)).toBe(400);
+    expect((await post('item-choices-save', { ...choices(id), item_id: 'nope' })).status).toBe(400);
+    expect((await post('item-choices-save', { ...choices(id), item_id: uuidish })).status).toBe(404);
+  });
+
+  it('CSV import carries sizes through the API', async () => {
+    as(w.A.owner);
+    const row = { category: 'API Sizes', name: `Imp ${randomUUID().slice(0, 4)}`, description: '', price_paise: 9000, diet: 'veg', spice: 0, bestseller: false, chef_pick: false, available: true, sizes: [{ name: 'Half', price_paise: 9000 }, { name: 'Full', price_paise: 16000 }] };
+    expect(await json(await post('menu-import', { rows: [row] }))).toMatchObject({ ok: true, created: 1 });
+    const item = (await json(await get('menu'))).categories.flatMap((c: any) => c.items).find((i: any) => i.name === row.name);
+    expect(item.variants.map((v: any) => [v.name, v.price_paise])).toEqual([['Half', 9000], ['Full', 16000]]);
+    expect((await post('menu-import', { rows: [{ ...row, name: 'Too many', sizes: Array.from({ length: 9 }, (_, i) => ({ name: `s${i}`, price_paise: 1 })) }] })).status).toBe(400);
+  });
+});

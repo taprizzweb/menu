@@ -12,6 +12,7 @@ import { CartSheet } from './CartSheet';
 import { BillSheet, WaiterSheet } from './HelpSheets';
 import { MenuView } from './MenuView';
 import { RestaurantHero, RestaurantInfo } from './RestaurantHero';
+import { ItemOptionsSheet } from './ItemOptionsSheet';
 import { LinkPicker } from './LinkPicker';
 import { PoweredBy } from './PoweredBy';
 import { StatusView, ThankYou } from './StatusView';
@@ -32,6 +33,8 @@ export function GuestApp({
   const [view, setView] = useState<'menu' | 'status'>('menu');
   const [hasSession, setHasSession] = useState(hasCookie);
   const [sheet, setSheet] = useState<null | 'cart' | 'waiter' | 'bill'>(null);
+  // the dish whose size / options are being chosen
+  const [choosing, setChoosing] = useState<MenuItem | null>(null);
   const [placing, setPlacing] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [helpBusy, setHelpBusy] = useState(false);
@@ -99,7 +102,15 @@ export function GuestApp({
     placingRef.current = true;
     setPlacing(true);
     setOrderError(null);
-    const payload = { items: cart.lines.map((l) => ({ item_id: l.id, qty: l.qty, ...(l.note?.trim() ? { note: l.note.trim() } : {}) })), note: cart.note.trim() || undefined };
+    const payload = {
+      items: cart.lines.map((l) => ({
+        item_id: l.item_id, qty: l.qty,
+        ...(l.variant_id ? { variant_id: l.variant_id } : {}),
+        ...(l.option_ids?.length ? { option_ids: l.option_ids } : {}),
+        ...(l.note?.trim() ? { note: l.note.trim() } : {}),
+      })),
+      note: cart.note.trim() || undefined,
+    };
     try {
       const idem = idempotencyKeyFor(slug, JSON.stringify(payload));
       try {
@@ -174,7 +185,7 @@ export function GuestApp({
         ) : showStatus ? (
           <StatusView data={status} t={t} onAddMore={() => setView('menu')} />
         ) : (
-          <MenuView categories={categories} t={t} canOrder={canOrder} imageBase={imageBase} qtyOf={cart.qtyOf} onAdd={(id) => { track('cart_add', { item_id: id }); cart.add(id); }} onSet={cart.setQty} onTrack={track} />
+          <MenuView categories={categories} t={t} canOrder={canOrder} imageBase={imageBase} qtyOf={cart.qtyOf} onAdd={(id) => { track('cart_add', { item_id: id }); cart.add(id); }} onSet={cart.setQty} onCustomise={setChoosing} onTrack={track} />
         )}
         {!showStatus && <RestaurantInfo r={menu.restaurant} t={t} onTrack={track} />}
       </main>
@@ -215,6 +226,16 @@ export function GuestApp({
         </div>
       )}
 
+      <ItemOptionsSheet
+        item={choosing}
+        t={t}
+        onClose={() => setChoosing(null)}
+        onAdd={(item, variantId, optionIds, qty) => {
+          track('cart_add', { item_id: item.id });
+          cart.addConfigured(item.id, variantId, optionIds, qty);
+          setChoosing(null);
+        }}
+      />
       <CartSheet open={sheet === 'cart'} onClose={() => setSheet(null)} t={t} cart={cart} items={items} placing={placing} error={orderError} adjusted={cart.adjusted} onPlace={place} />
       <WaiterSheet open={sheet === 'waiter'} onClose={() => setSheet(null)} t={t} openRequest={waiterReq} busy={helpBusy} error={helpError} onPick={(r: WaiterReason) => token && void help(() => callWaiter(slug, token, r))} />
       <BillSheet open={sheet === 'bill'} onClose={() => setSheet(null)} t={t} openRequest={billReq} busy={helpBusy} error={helpError} onPick={(m: PayMode) => {

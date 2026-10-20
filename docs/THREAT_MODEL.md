@@ -19,6 +19,10 @@ Actors: **guest** (anyone with a phone at a table), **outsider** (anyone on the 
 - **Tested:** `supabase/tests/rooms.test.ts`, `tests/api/guest.test.ts`, `tests/e2e/guest.spec.ts`, `tests/e2e/dashboard.spec.ts`.
 - **Remaining risk:** anyone holding the link can order to any room number on the list (a prank). Orders still go to staff first, who see the room and the dishes; staff can cancel with a reason. A room PIN or guest name is a possible later step. Accepted.
 
+### 3a. Sizes and options (migration 0024)
+- Size and option ids are the only things the browser sends. The database finds the size price and extra prices itself, refuses ids that belong to another dish or restaurant, repeated options, more than the allowed number in a group, a missing required choice, a size on a dish without sizes, and sold-out sizes; all inside the same transaction that locks the prices it read.
+- **Tested:** `supabase/tests/choices.test.ts`, `tests/api/guest.test.ts`, `tests/e2e/guest.spec.ts`.
+
 ## 3. Price tampering
 - **Stops it:** the browser only sends dish ids and quantities. Prices, availability and totals come from the database at order time; a changed menu price never alters an existing order (each order stores its own price snapshot).
 - **Tested:** `supabase/tests/place_order.test.ts`, `tests/api/guest.test.ts`.

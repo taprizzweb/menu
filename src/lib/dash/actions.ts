@@ -40,6 +40,7 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
     args: (b) => ({ p_id: b.id ?? null, p_category: b.category_id, p_name: b.name, p_description: b.description ?? null, p_price_paise: b.price_paise, p_diet: b.diet, p_spice: b.spice, p_image_path: b.image_path ?? null, p_bestseller: b.is_bestseller, p_chef_pick: b.is_chef_pick, p_available: b.is_available ?? null }),
     result: (id: string) => ({ id }),
   },
+  'item-choices-save': { method: 'POST', rpc: 'mgr_save_item_choices', schema: S.itemChoicesSave, args: (b) => ({ p_item_id: b.item_id, p_variants: b.variants, p_groups: b.groups }), result: () => ({ ok: true }) },
   'item-delete': { method: 'POST', rpc: 'mgr_delete_item', schema: S.idOnly, args: (b) => ({ p_id: b.id }), result: () => ({ ok: true }) },
   'item-duplicate': { method: 'POST', rpc: 'mgr_duplicate_item', schema: S.idOnly, args: (b) => ({ p_id: b.id }), result: (id: string) => ({ id }) },
   'items-availability': { method: 'POST', rpc: 'staff_set_item_availability', schema: availabilityBody, args: (b) => ({ p_item_ids: b.item_ids, p_available: b.available }), result: (n: number) => ({ changed: n }) },

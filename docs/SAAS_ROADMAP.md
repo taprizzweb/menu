@@ -22,6 +22,9 @@ Public profile: tagline, about, logo, banner, phone, WhatsApp, address, opening 
 ## Added after that (room service)
 - One shared room-service link per restaurant (migration `0022_room_service.sql`): the guest enters a room number first, then orders; each room is an ordinary table labelled "Room 204" so the live board, bills and paying work unchanged. Owner manages it on Tables & QR (optional room list, new link, print card).
 
+## Added after that (sizes and options)
+- Dish sizes (Small / Large, Half / Full...) with their own prices, and option groups (required or optional, a maximum, extra prices): migration `0024_item_sizes_options.sql`. Prices are always worked out by the database from ids; the order line keeps a readable name such as "Oreo Shake (Large) + Choco, Cream", so staff screens, bills and reports need no change. CSV `sizes` column. Still open: option availability (sold-out single options), per-size photos.
+
 ## Not built yet (recommended order)
 1. **Phase 1 slice 2: look and feel.** Several design templates (minimal, dark, warm, elegant, bright), dish detail view, featured section, category images, image fallbacks and loading skeletons. Needs real food photos from restaurants to look premium.
 2. ~~Analytics~~ done (see above). Still open: traffic source (needs a `?src=` convention on QR links), weekly trend view.

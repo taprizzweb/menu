@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { formatPaise } from '@/lib/money';
+import { lineLabel, unitPrice } from '@/lib/guest/options';
 import type { MenuItem } from '@/lib/guest/types';
 import type { Translator } from '@/lib/i18n';
 import type { Cart } from './hooks';
@@ -22,16 +23,19 @@ export function CartSheet({
           {adjusted && <Notice>{t('cart.priceChanged')}</Notice>}
           <ul className="divide-y divide-stone-200">
             {cart.lines.map((l) => {
-              const item = items.get(l.id);
+              const item = items.get(l.item_id);
               if (!item) return null;
               const name = item.name_en;
+              const label = lineLabel(item, l.variant_id, l.option_ids ?? []);
+              const unit = unitPrice(item, l.variant_id, l.option_ids ?? []) ?? item.price_paise;
               const noteOpen = openNotes.has(l.id) || !!l.note;
               return (
                 <li key={l.id} className="py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-semibold leading-snug">{name}</p>
-                      <p className="text-sm text-stone-600">{formatPaise(item.price_paise)} × {l.qty} = <span className="font-semibold text-stone-900">{formatPaise(item.price_paise * l.qty)}</span></p>
+                      {label && <p className="text-sm font-medium text-stone-800">{label}</p>}
+                      <p className="text-sm text-stone-600">{formatPaise(unit)} × {l.qty} = <span className="font-semibold text-stone-900">{formatPaise(unit * l.qty)}</span></p>
                     </div>
                     <div className="flex shrink-0 items-center rounded-xl border border-stone-300">
                       <button type="button" onClick={() => cart.setQty(l.id, l.qty - 1)} aria-label={l.qty === 1 ? t('cart.remove', { name }) : t('item.decrease', { name })} className="flex h-11 w-11 items-center justify-center">

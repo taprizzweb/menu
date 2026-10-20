@@ -31,8 +31,9 @@ describe('menu CSV import', () => {
   it('the downloadable sample is itself a valid file', () => {
     const r = parseMenuCsv(SAMPLE_CSV);
     expect(r.issues).toEqual([]);
-    expect(r.rows).toHaveLength(3);
+    expect(r.rows).toHaveLength(4);
     expect(r.rows[0]!.description).toContain('spiced yoghurt, charred');
+    expect(r.rows[2]!.sizes).toEqual([{ name: 'Small', price_paise: 12000 }, { name: 'Medium', price_paise: 16000 }, { name: 'Large', price_paise: 20000 }, { name: 'XL', price_paise: 24000 }]);
   });
   it('accepts friendly spellings: columns in any order and case, diet names, yes/no, rupee signs and commas', () => {
     const r = parseMenuCsv(`Price (Rs),NAME,Category,Diet,Spice,Best Seller,Chef's Pick,Is Available\n"₹1,200.00",Thali,Meals,Non-Veg,3,YES,y,no`);
@@ -85,7 +86,7 @@ describe('menu CSV export', () => {
       ],
     };
     const csv = menuToCsv(menu);
-    expect(csv.split('\r\n')[0]).toBe('category,name,description,price,diet,spice,bestseller,chef_pick,available');
+    expect(csv.split('\r\n')[0]).toBe('category,name,description,price,diet,spice,bestseller,chef_pick,available,sizes');
     expect(csv).toContain('280.50');
     expect(csv).toContain(',40,');
     const back = parseMenuCsv(csv);
@@ -94,5 +95,32 @@ describe('menu CSV export', () => {
       { category: 'Starters', name: 'Tikka, spicy', description: 'Hot "tandoor"\nsmoky', price_paise: 28050, diet: 'veg', spice: 2, bestseller: true, chef_pick: false, available: true },
       { category: 'Drinks', name: '=cmd', description: '', price_paise: 4000, diet: 'jain', spice: 0, bestseller: false, chef_pick: true, available: false },
     ]);
+  });
+});
+
+describe('sizes in the CSV', () => {
+  const h = 'category,name,price,sizes';
+  it('reads sizes, uses the cheapest as the price when the price is empty, and keeps a given price', () => {
+    const r = parseMenuCsv(`${h}\nDrinks,Oreo Shake,,Small:120|Medium:160.50|Large:200\nMeals,Biryani,250,Half:150|Full:280`);
+    expect(r.issues).toEqual([]);
+    expect(r.rows[0]).toMatchObject({ price_paise: 12000, sizes: [{ name: 'Small', price_paise: 12000 }, { name: 'Medium', price_paise: 16050 }, { name: 'Large', price_paise: 20000 }] });
+    expect(r.rows[1]).toMatchObject({ price_paise: 25000, sizes: [{ name: 'Half', price_paise: 15000 }, { name: 'Full', price_paise: 28000 }] });
+  });
+  it('a file with a sizes column does not need a price column', () => {
+    expect(parseMenuCsv('category,name,sizes\nDrinks,Shake,S:10|L:20').issues).toEqual([]);
+    expect(parseMenuCsv('category,name\nDrinks,Shake').fatal).toMatch(/Missing: price/);
+  });
+  it('refuses broken, repeated or too many sizes with a clear message', () => {
+    const bad = ['Small', 'Small:', ':120', 'Small:abc', 'Small:120|small:130', Array.from({ length: 9 }, (_, i) => `S${i}:1`).join('|'), `${'x'.repeat(31)}:5`, 'Small:-5'];
+    for (const cell of bad) {
+      const r = parseMenuCsv(`${h}\nDrinks,Shake,100,${cell}`);
+      expect(r.issues.length, cell).toBe(1);
+    }
+    expect(parseMenuCsv(`${h}\nDrinks,Shake,,`).issues[0]?.messages[0]).toMatch(/Price must be/);
+  });
+  it('exports sizes in the same cell format and reads them back unchanged', () => {
+    const csv = menuToCsv({ categories: [{ name: 'Drinks', items: [{ name: 'Shake', description: null, price_paise: 12000, diet: 'veg', spice: 0, is_bestseller: false, is_chef_pick: false, is_available: true, variants: [{ name: 'Small', price_paise: 12000 }, { name: 'Large', price_paise: 20050 }] }] }] });
+    expect(csv).toContain('Small:120|Large:200.50');
+    expect(parseMenuCsv(csv).rows[0]!.sizes).toEqual([{ name: 'Small', price_paise: 12000 }, { name: 'Large', price_paise: 20050 }]);
   });
 });

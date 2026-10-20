@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CartLine, MenuItem, StatusData } from '@/lib/guest/types';
 import { ApiFailure, fetchStatus } from '@/lib/guest/client';
+import { lineKey, unitPrice } from '@/lib/guest/options';
 import { readJson, remove, writeJson } from '@/lib/guest/storage';
 
 const MAX_QTY = 10;
@@ -20,16 +21,20 @@ export interface Cart {
   adjusted: boolean;
   count: number;
   totalPaise: number;
-  qtyOf(id: string): number;
-  add(id: string): void;
-  setQty(id: string, qty: number): void;
-  setLineNote(id: string, note: string): void;
+  /** how many of a dish are in the cart, over all its sizes and option choices */
+  qtyOf(itemId: string): number;
+  /** a plain dish (no sizes or options) */
+  add(itemId: string): void;
+  /** a dish with a chosen size and / or options */
+  addConfigured(itemId: string, variantId: string | undefined, optionIds: string[], qty: number): void;
+  setQty(lineId: string, qty: number): void;
+  setLineNote(lineId: string, note: string): void;
   setNote(note: string): void;
   clear(): void;
   dismissAdjusted(): void;
 }
 
-/** Cart persisted in localStorage per restaurant; re-validated against the live menu so stale dishes never get sent. */
+/** Cart persisted in localStorage per restaurant; re-validated against the live menu so stale dishes, sizes or options never get sent. */
 export function useCart(slug: string, items: Map<string, MenuItem>): Cart {
   const key = `gm:cart:${slug}`;
   const [lines, setLines] = useState<CartLine[]>([]);
@@ -41,18 +46,25 @@ export function useCart(slug: string, items: Map<string, MenuItem>): Cart {
   useEffect(() => {
     const stored = readJson<StoredCart>(key);
     if (stored?.v === 1 && Array.isArray(stored.lines)) {
-      setLines(stored.lines.filter((l) => l && typeof l.id === 'string' && Number.isInteger(l.qty)));
+      setLines(
+        stored.lines
+          .filter((l) => l && typeof l.id === 'string' && Number.isInteger(l.qty))
+          .map((l) => ({ ...l, item_id: typeof l.item_id === 'string' ? l.item_id : l.id })),
+      );
       setNote(typeof stored.note === 'string' ? stored.note : '');
     }
     setReady(true);
   }, [key]);
 
-  // Drop dishes that are gone or sold out, clamp quantities.
+  // Drop lines whose dish, size or options are gone or sold out, clamp quantities.
   useEffect(() => {
     if (!ready) return;
     setLines((cur) => {
       const next = cur
-        .filter((l) => items.get(l.id)?.is_available)
+        .filter((l) => {
+          const item = items.get(l.item_id);
+          return !!item?.is_available && unitPrice(item, l.variant_id, l.option_ids ?? []) !== null;
+        })
         .map((l) => ({ ...l, qty: Math.min(Math.max(l.qty, 1), MAX_QTY) }));
       if (next.length !== cur.length) setAdjusted(true);
       return next.length === cur.length && next.every((l, i) => l.qty === cur[i]!.qty) ? cur : next;
@@ -65,17 +77,29 @@ export function useCart(slug: string, items: Map<string, MenuItem>): Cart {
     else writeJson(key, { v: 1, lines, note } satisfies StoredCart);
   }, [ready, lines, note, key]);
 
-  const setQty = useCallback((id: string, qty: number) => {
+  const setQty = useCallback((lineId: string, qty: number) => {
     setLines((cur) => {
       const q = Math.min(Math.max(qty, 0), MAX_QTY);
-      if (q === 0) return cur.filter((l) => l.id !== id);
-      return cur.some((l) => l.id === id) ? cur.map((l) => (l.id === id ? { ...l, qty: q } : l)) : [...cur, { id, qty: q }];
+      if (q === 0) return cur.filter((l) => l.id !== lineId);
+      return cur.map((l) => (l.id === lineId ? { ...l, qty: q } : l));
+    });
+  }, []);
+
+  const addConfigured = useCallback((itemId: string, variantId: string | undefined, optionIds: string[], qty: number) => {
+    const id = lineKey(itemId, variantId, optionIds);
+    setLines((cur) => {
+      const have = cur.find((l) => l.id === id);
+      if (have) return cur.map((l) => (l.id === id ? { ...l, qty: Math.min(l.qty + qty, MAX_QTY) } : l));
+      return [...cur, { id, item_id: itemId, ...(variantId ? { variant_id: variantId } : {}), ...(optionIds.length ? { option_ids: [...optionIds].sort() } : {}), qty: Math.min(Math.max(qty, 1), MAX_QTY) }];
     });
   }, []);
 
   return useMemo<Cart>(() => {
     const count = lines.reduce((n, l) => n + l.qty, 0);
-    const totalPaise = lines.reduce((n, l) => n + (items.get(l.id)?.price_paise ?? 0) * l.qty, 0);
+    const totalPaise = lines.reduce((n, l) => {
+      const item = items.get(l.item_id);
+      return n + (item ? (unitPrice(item, l.variant_id, l.option_ids ?? []) ?? 0) : 0) * l.qty;
+    }, 0);
     return {
       lines,
       note,
@@ -83,8 +107,9 @@ export function useCart(slug: string, items: Map<string, MenuItem>): Cart {
       adjusted,
       count,
       totalPaise,
-      qtyOf: (id) => lines.find((l) => l.id === id)?.qty ?? 0,
-      add: (id) => setQty(id, (lines.find((l) => l.id === id)?.qty ?? 0) + 1),
+      qtyOf: (itemId) => lines.filter((l) => l.item_id === itemId).reduce((n, l) => n + l.qty, 0),
+      add: (itemId) => addConfigured(itemId, undefined, [], 1),
+      addConfigured,
       setQty,
       setLineNote: (id, n) => setLines((cur) => cur.map((l) => (l.id === id ? { ...l, note: n } : l))),
       setNote,
@@ -94,7 +119,7 @@ export function useCart(slug: string, items: Map<string, MenuItem>): Cart {
       },
       dismissAdjusted: () => setAdjusted(false),
     };
-  }, [lines, note, ready, adjusted, items, setQty]);
+  }, [lines, note, ready, adjusted, items, setQty, addConfigured]);
 }
 
 /** One idempotency key per distinct cart content: a retry of the same cart can never create a second order. */
