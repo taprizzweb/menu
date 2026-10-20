@@ -27,6 +27,58 @@ async function placeOrderFromCart(page: Page) {
   await dialog(page).getByRole('button', { name: 'Place order' }).click();
 }
 
+test.describe('room service', () => {
+  const LINK = 'e'.repeat(64);
+  const setup = (rooms: string) => q(`update public.restaurants set room_token = $1, room_numbers = $2::text[] where slug = 'spice-garden'`, [LINK, rooms]);
+  const teardown = () => q(`update public.restaurants set room_token = null, room_numbers = '{}' where slug = 'spice-garden'`);
+
+  test('the shared link asks for the room, then the order arrives as that room', async ({ page }) => {
+    await setup('{101,204}');
+    try {
+      await page.goto(`/spice-garden?k=${LINK}`);
+      await expect(page.getByRole('heading', { name: 'Order to your room' })).toBeVisible();
+      // the menu can be read but nothing can be ordered yet, and there is no "invalid QR" warning
+      await expect(page.getByRole('button', { name: 'Add Masala Chai', exact: true })).toHaveCount(0);
+      await expect(page.getByText('no longer valid')).toHaveCount(0);
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-room-1-ask.png` });
+
+      await page.getByLabel('Room number').selectOption('204');
+      await page.getByRole('button', { name: 'Continue to the menu' }).click();
+      await expect(page).not.toHaveURL(new RegExp(LINK));
+      await expect(page).toHaveURL(/\/spice-garden\?k=[0-9a-f]{64}$/);
+      await expect(page.getByText('Room 204', { exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Order to your room' })).toHaveCount(0);
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-room-2-menu.png` });
+
+      await add(page, 'Masala Chai');
+      await placeOrderFromCart(page);
+      await expect(page.getByRole('heading', { name: 'Your orders' })).toBeVisible();
+      const [row] = await q<{ label: string; session_id: string }>(
+        `select t.label, o.session_id from public.orders o join public.dining_tables t on t.id = o.table_id where t.label = 'Room 204' and t.restaurant_id = (select id from public.restaurants where slug = 'spice-garden') order by o.created_at desc limit 1`,
+      );
+      expect(row?.label).toBe('Room 204');
+      await staff(OWNER, 'staff_close_session', { p_session_id: row!.session_id, p_force: true, p_reason: 'test' });
+    } finally {
+      await teardown();
+    }
+  });
+
+  test('with no room list a typed room number is accepted; a junk one is refused politely', async ({ page }) => {
+    await setup('{}');
+    try {
+      await page.goto(`/spice-garden?k=${LINK}`);
+      await page.getByLabel('Room number').fill('<b>');
+      await page.getByRole('button', { name: 'Continue to the menu' }).click();
+      await expect(alertWith(page, 'Please enter a room number')).toBeVisible();
+      await page.getByLabel('Room number').fill('suite 7');
+      await page.getByRole('button', { name: 'Continue to the menu' }).click();
+      await expect(page.getByText('Room SUITE 7', { exact: true })).toBeVisible();
+    } finally {
+      await teardown();
+    }
+  });
+});
+
 test.describe('guest journey', () => {
   test('scan → order → live status → call waiter → ask bill → paid → thank-you', async ({ page }, info) => {
     const t = await newTable();

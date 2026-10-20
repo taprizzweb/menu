@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizeExploreCode } from '@/lib/profile';
+import { parseRooms } from '@/lib/rooms';
 
 const uuid = z.string().uuid();
 const clean = (max: number) =>
@@ -59,6 +60,14 @@ export const menuImport = z
 
 export const tableSave = z.object({ id: uuid, label: name(20), active: z.boolean() }).strict();
 export const tablesCreate = z.object({ from: z.number().int().min(1).max(999), to: z.number().int().min(1).max(999) }).strict();
+
+export const roomServiceSave = z
+  .object({ enabled: z.boolean(), rooms: z.string().max(4000), rotate: z.boolean().optional() })
+  .strict()
+  .superRefine((v, ctx) => {
+    const r = parseRooms(v.rooms);
+    if (!r.ok) ctx.addIssue({ code: 'custom', path: ['rooms'], message: r.error });
+  });
 
 export const settingsSave = z
   .object({

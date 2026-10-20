@@ -1,4 +1,5 @@
 'use client';
+import { tableName } from '@/lib/rooms';
 import { useState } from 'react';
 import { formatPaise } from '@/lib/money';
 import { counterInstruction } from '@/lib/pay';
@@ -47,7 +48,7 @@ function OrderCard({ o, role, nowMs, amber, red, actions }: { o: BoardOrder; rol
     <li data-testid={`order-${o.order_no}`} className={`rounded-2xl border-2 p-4 ${SEVERITY_STYLE[sev]}`}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-2xl font-extrabold leading-none">Table {o.table_label}</p>
+          <p className="text-2xl font-extrabold leading-none">{tableName(o.table_label)}</p>
           <p className="mt-1 text-sm font-semibold text-stone-700">Order #{o.order_no}</p>
         </div>
         <AgeBadge ageSeconds={age} sev={sev} />
@@ -82,7 +83,7 @@ function RequestCard({ r, nowMs, actions }: { r: BoardRequest; nowMs: number; ac
           <p className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wide">
             {bill ? <IconReceipt /> : <IconBell />} {bill ? 'Bill request' : 'Waiter call'}
           </p>
-          <p className="mt-1 text-2xl font-extrabold leading-none">Table {r.table_label}</p>
+          <p className="mt-1 text-2xl font-extrabold leading-none">{tableName(r.table_label)}</p>
         </div>
         <span className="text-base font-bold tabular-nums">{formatAge(age)}</span>
       </div>
@@ -103,7 +104,7 @@ function SessionCard({ s, role, nowMs, actions }: { s: BoardSession; role: Role;
     <li data-testid={`table-${s.table_label}`} className="rounded-2xl border-2 border-stone-300 bg-white p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-2xl font-extrabold leading-none">Table {s.table_label}</p>
+          <p className="text-2xl font-extrabold leading-none">{tableName(s.table_label)}</p>
           <p className="mt-1 text-sm text-stone-700">Open {open} · {s.orders_count} {s.orders_count === 1 ? 'order' : 'orders'}</p>
         </div>
         <p className="text-2xl font-extrabold tabular-nums">{formatPaise(s.total_paise)}</p>
@@ -189,7 +190,7 @@ export function CancelDialog({ order, onClose, onConfirm, busy, error }: { order
     <Sheet open={!!order} onClose={() => { setReason(''); onClose(); }} title={order ? `Cancel order #${order.order_no}?` : 'Cancel order'} closeLabel="Close">
       {order && (
         <div className="space-y-4">
-          <p className="text-stone-800">Table {order.table_label} will be told this order was cancelled, with your reason.</p>
+          <p className="text-stone-800">{tableName(order.table_label)} will be told this order was cancelled, with your reason.</p>
           <div className="flex flex-wrap gap-2">
             {QUICK_CANCEL.map((q) => (
               <button key={q} type="button" onClick={() => setReason(q)} className={`${btnSecondary} ${reason === q ? '!border-stone-900 !bg-stone-900 !text-white' : ''}`}>{q}</button>
@@ -222,7 +223,7 @@ export function CloseDialog({ session, role, onClose, onConfirm, busy, error }: 
   const opts = closeOptions(role, session);
   const force = !opts.canPay && opts.canForce;
   const chosen = mode ?? session.pay_mode;
-  const title = force ? `Force close Table ${session.table_label}?` : session.total_paise > 0 ? `Mark Table ${session.table_label} as paid?` : `Close Table ${session.table_label}?`;
+  const title = force ? `Force close ${tableName(session.table_label)}?` : session.total_paise > 0 ? `Mark ${tableName(session.table_label)} as paid?` : `Close ${tableName(session.table_label)}?`;
   return (
     <Sheet open onClose={() => { setReason(''); setMode(null); onClose(); }} title={title} closeLabel="Close">
       <div className="space-y-4">

@@ -27,6 +27,8 @@ export const orderBody = z
   .strict();
 export type OrderBody = z.infer<typeof orderBody>;
 
+export const roomBody = z.object({ slug, token, room: text(10).pipe(z.string().min(1)) }).strict();
+
 export const requestBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('waiter'), slug, token, reason: z.enum(['water', 'cutlery', 'cleaning', 'help', 'other']) }).strict(),
   z.object({ type: z.literal('bill'), slug, token, pay_mode: z.enum(['cash', 'upi', 'card']) }).strict(),

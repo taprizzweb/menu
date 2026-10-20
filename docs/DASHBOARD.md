@@ -7,6 +7,7 @@ Waiters and kitchen staff are sent back to the live screen.
 |---|---|---|
 | Menu | Categories, dishes, photos, prices, veg / non-veg / egg / Jain, spice, badges, sold out. Reorder with ↑/↓ buttons or by dragging (desktop). Select several dishes for bulk sold-out / bulk price change. Duplicate a dish. Import and export CSV. | Owner, manager |
 | Tables & QR | Create tables 1…N, rename, switch off, make a new QR (old printed code stops working), print an A4 QR sheet or table tents. | Owner, manager |
+| Room service (on Tables & QR) | For hotels and guest houses: one shared link/QR. The guest picks or types a room number, then orders; the order appears on the staff screen as "Room 204". Optional room list (`101-110, 201`) stops wrong numbers; empty list accepts any. Turn off or make a new link at any time (the old link stops). Print an A4 card. | Owner (manager can view) |
 | Staff | Add a person (temporary password shown once), change name/role, deactivate, reset password. | Owner (manager can only view) |
 | Settings | Restaurant name, Google review link, accent colour, amber/red waiting minutes. Plan and paid-until are shown read-only. | Owner (manager can only view) |
 | Report | Today / 7 days / 30 days: orders, average order, total sales, top 10 dishes, busiest hours, review-button taps (India time). | Owner, manager (read) |

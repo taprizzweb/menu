@@ -175,6 +175,40 @@ test.describe('menu manager', () => {
 });
 
 test.describe('tables and QR codes', () => {
+  test('room service: turn on with a room list, see the link and QR, print the card, turn off', async ({ page }) => {
+    await q(`update public.restaurants set room_token = null, room_numbers = '{}' where slug = 'spice-garden'`);
+    try {
+      await loginAs(page, 'owner', '/dash/tables');
+      const section = page.getByRole('region', { name: 'Room service link' });
+      await expect(section).toContainText('Off');
+      await section.getByLabel('Rooms (optional)').fill('101-103, 201');
+      await section.getByRole('button', { name: 'Turn on room service' }).click();
+      await expect(page.getByText('Room service is on.')).toBeVisible();
+      await expect(section.getByRole('img', { name: 'QR code for the room service link' })).toBeVisible();
+      const [row] = await q<{ room_token: string; room_numbers: string[] }>(`select room_token, room_numbers from public.restaurants where slug = 'spice-garden'`);
+      expect(row!.room_token).toMatch(/^[0-9a-f]{64}$/);
+      expect(row!.room_numbers).toEqual(['101', '102', '103', '201']);
+      await expect(section.getByLabel('Link')).toHaveValue(new RegExp(`/spice-garden\\?k=${row!.room_token}$`));
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-dash-room-service.png`, fullPage: true });
+
+      // a wrong list is explained, nothing changes
+      await section.getByLabel('Rooms (optional)').fill('110-101');
+      await section.getByRole('button', { name: 'Save rooms' }).click();
+      await expect(page.getByRole('alert').filter({ hasText: 'not a valid range' })).toBeVisible();
+
+      await page.goto('/dash/print?layout=room');
+      await expect(page.getByRole('heading', { name: 'Room service card' })).toBeVisible();
+      await expect(page.getByRole('img', { name: 'QR code to order room service' })).toBeVisible();
+
+      await page.goto('/dash/tables');
+      await section.getByRole('button', { name: 'Turn off' }).click();
+      await expect(page.getByText('Room service is off.')).toBeVisible();
+      expect((await q<{ room_token: string | null }>(`select room_token from public.restaurants where slug = 'spice-garden'`))[0]!.room_token).toBeNull();
+    } finally {
+      await q(`update public.restaurants set room_token = null, room_numbers = '{}' where slug = 'spice-garden'`);
+    }
+  });
+
   test('create tables, rotate a QR code with a warning, and print both layouts', async ({ page }) => {
     await loginAs(page, 'owner', '/dash/tables');
     const base = test.info().project.name === 'mobile' ? 810 : 820;

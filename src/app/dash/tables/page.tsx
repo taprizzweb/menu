@@ -1,3 +1,4 @@
+import type { RoomService } from '@/components/dash/RoomServiceCard';
 import { TablesManager, type TableRow } from '@/components/dash/TablesManager';
 import { dashContext } from '@/lib/dash/context';
 import { qrDataUri, tableUrl } from '@/lib/dash/qr';
@@ -11,5 +12,9 @@ export default async function TablesPage() {
   const tables: TableRow[] = await Promise.all(
     rows.map(async (r) => ({ id: r.table_id, label: r.label, active: r.active, qr: await qrDataUri(tableUrl(c.appOrigin, c.me.restaurant.slug, r.qr_token)) })),
   );
-  return <TablesManager tables={tables} />;
+  const { data: room } = await db.rpc('mgr_get_room_service');
+  const rr = (room ?? { enabled: false, token: null, rooms: [] }) as { enabled: boolean; token: string | null; rooms: string[] };
+  const url = rr.enabled && rr.token ? tableUrl(c.appOrigin, c.me.restaurant.slug, rr.token) : null;
+  const roomService: RoomService = { enabled: rr.enabled, url, qr: url ? await qrDataUri(url) : null, rooms: rr.rooms ?? [] };
+  return <TablesManager tables={tables} roomService={roomService} canEditRooms={c.me.role === 'owner'} />;
 }

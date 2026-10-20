@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- each action's input type is fixed by its own zod schema; the table maps names to them */
 import type { ZodType } from 'zod';
+import { parseRooms } from '@/lib/rooms';
 import * as S from '@/lib/schemas/dash';
 import { availabilityBody } from '@/lib/schemas/staff';
 
@@ -24,6 +25,7 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
   settings: { method: 'GET', rpc: 'mgr_get_settings', args: none },
   staff: { method: 'GET', rpc: 'mgr_get_staff', args: none },
   tables: { method: 'GET', rpc: 'mgr_get_table_tokens', args: none, result: (rows: unknown[]) => ({ tables: rows }) },
+  'room-service': { method: 'GET', rpc: 'mgr_get_room_service', args: none },
   report: { method: 'GET', rpc: 'mgr_report', schema: S.reportQuery, args: (q: { range: string }) => ({ p_range: q.range }) },
   analytics: { method: 'GET', rpc: 'mgr_analytics', schema: S.analyticsQuery, args: (q: { range: string }) => ({ p_range: q.range }) },
   audit: { method: 'GET', rpc: 'mgr_get_audit', schema: S.auditQuery, args: (q: { limit: number; before?: number }) => ({ p_limit: q.limit, p_before: q.before ?? null }), result: (rows: unknown[]) => ({ entries: rows }) },
@@ -48,6 +50,14 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
   'table-save': { method: 'POST', rpc: 'mgr_save_table', schema: S.tableSave, args: (b) => ({ p_id: b.id, p_label: b.label, p_active: b.active }), result: () => ({ ok: true }) },
   'tables-create': { method: 'POST', rpc: 'mgr_create_tables', schema: S.tablesCreate, args: (b) => ({ p_from: b.from, p_to: b.to }), result: (n: number) => ({ created: n }) },
   'table-rotate': { method: 'POST', rpc: 'mgr_rotate_table_token', schema: S.idOnly, args: (b) => ({ p_table_id: b.id }), result: () => ({ ok: true }) },
+  'room-service-save': {
+    method: 'POST', rpc: 'mgr_set_room_service', schema: S.roomServiceSave,
+    args: (b) => {
+      const parsed = parseRooms(b.rooms);
+      return { p_enabled: b.enabled, p_rooms: parsed.ok ? parsed.rooms : [], p_rotate: b.rotate ?? false };
+    },
+    result: () => ({ ok: true }),
+  },
   'profile-save': {
     method: 'POST', rpc: 'mgr_update_profile', schema: S.profileSave,
     args: (b) => ({ p_tagline: b.tagline, p_description: b.description, p_logo: b.logo_path, p_banner: b.banner_path, p_address: b.address, p_hours: b.hours_text, p_explore: b.explore_code }),

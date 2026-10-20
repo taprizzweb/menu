@@ -45,6 +45,9 @@ export interface PlaceOrderInput {
 export const placeOrder = (input: PlaceOrderInput) =>
   post<{ order_no: number; total_paise: number; status: string; replayed: boolean }>('/api/guest/order', input);
 
+export const openRoom = (slug: string, token: string, room: string) =>
+  post<{ token: string; label: string }>('/api/guest/room', { slug, token, room });
+
 export const callWaiter = (slug: string, token: string, reason: WaiterReason) =>
   post<{ request: { type: string; status: string } }>('/api/guest/request', { type: 'waiter', slug, token, reason });
 

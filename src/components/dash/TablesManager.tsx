@@ -3,11 +3,12 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Alert, Notice, Sheet, btnPrimary, btnSecondary } from '@/components/guest/ui';
 import { dashPost, errText, inputCls } from './api';
+import { RoomServiceCard, type RoomService } from './RoomServiceCard';
 
 export interface TableRow { id: string; label: string; active: boolean; qr: string }
 const smallBtn = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900 hover:bg-stone-100 disabled:opacity-50';
 
-export function TablesManager({ tables }: { tables: TableRow[] }) {
+export function TablesManager({ tables, roomService, canEditRooms }: { tables: TableRow[]; roomService: RoomService; canEditRooms: boolean }) {
   const router = useRouter();
   const [from, setFrom] = useState('1');
   const [to, setTo] = useState('10');
@@ -48,6 +49,8 @@ export function TablesManager({ tables }: { tables: TableRow[] }) {
         </label>
         <button type="submit" disabled={busy} className={btnPrimary}>Create tables</button>
       </form>
+
+      <RoomServiceCard rs={roomService} canEdit={canEditRooms} />
 
       {tables.length === 0 && <p className="mt-6 text-stone-800">No tables yet. Create your first tables above, then print their QR codes.</p>}
       <ul className="mt-4 grid gap-3 sm:grid-cols-2">

@@ -1,4 +1,5 @@
 import type { MenuData } from '@/lib/guest/types';
+import { tableName } from '@/lib/rooms';
 import type { TrackIds } from '@/lib/guest/analytics';
 import type { Translator } from '@/lib/i18n';
 import type { MenuEvent } from '@/lib/schemas/guest';
@@ -28,7 +29,7 @@ export function RestaurantHero({ r, imageBase, tableLabel, t, compact = false }:
           ) : (
             <span aria-hidden className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white font-serif text-2xl font-bold text-accent shadow-md">{r.name.trim().charAt(0).toUpperCase()}</span>
           )}
-          {tableLabel && <p className="rounded-xl bg-white px-3 py-1.5 text-sm font-bold text-stone-900 shadow-md">{t('app.table', { label: tableLabel })}</p>}
+          {tableLabel && <p className="rounded-xl bg-white px-3 py-1.5 text-sm font-bold text-stone-900 shadow-md">{tableName(tableLabel)}</p>}
         </div>
         <div>
           <h1 className={`font-serif font-bold leading-[1.05] tracking-tight ${compact ? 'text-2xl' : 'text-4xl sm:text-5xl'}`}>{r.name}</h1>

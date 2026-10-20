@@ -13,6 +13,12 @@ Actors: **guest** (anyone with a phone at a table), **outsider** (anyone on the 
 - **Tested:** `supabase/tests/security.test.ts`, `tests/e2e/dashboard.spec.ts` (rotation).
 - **Remaining risk:** a photo of a *current* QR works until the QR is rotated. Mitigation: orders still land on that table and staff see them; rotate the QR if it leaks (`docs/RUNBOOK.md` in Phase 6). Accepted.
 
+### 2b. Room-service link (migration 0022)
+- **How it works:** one shared link per restaurant (`restaurants.room_token`, 256-bit) can only *open a room*; it cannot place an order. The guest's room number turns it into that room's own table link, after which every normal rule applies (prices from the database, pending-order cap, rate limits, location rule, suspension).
+- **Stops it:** an optional owner-defined room list (unknown numbers refused), room numbers limited to 10 safe characters, at most 500 rooms ever created on demand, 40 room lookups per address per 10 minutes, wrong-link guesses counted with the other token guesses, "New link" kills every old copy, turning it off erases the token.
+- **Tested:** `supabase/tests/rooms.test.ts`, `tests/api/guest.test.ts`, `tests/e2e/guest.spec.ts`, `tests/e2e/dashboard.spec.ts`.
+- **Remaining risk:** anyone holding the link can order to any room number on the list (a prank). Orders still go to staff first, who see the room and the dishes; staff can cancel with a reason. A room PIN or guest name is a possible later step. Accepted.
+
 ## 3. Price tampering
 - **Stops it:** the browser only sends dish ids and quantities. Prices, availability and totals come from the database at order time; a changed menu price never alters an existing order (each order stores its own price snapshot).
 - **Tested:** `supabase/tests/place_order.test.ts`, `tests/api/guest.test.ts`.

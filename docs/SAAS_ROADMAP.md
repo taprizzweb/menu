@@ -19,6 +19,9 @@ Public profile: tagline, about, logo, banner, phone, WhatsApp, address, opening 
 - Public menu redesign: photo hero, "Find us" info card, category thumbnails, image-led dish cards, favourites strip, dish details sheet.
 - Measured analytics (migration `0018_menu_analytics.sql`): events recorded by a service-only function (random per-tab id, no IP or user agent, rate-limited, de-duplicated, purged after 180 days, "Do Not Track" respected). Owners and managers see totals, daily opens, top dishes, categories, table scans and button taps under Dashboard > Analytics, with a CSV download and a plain explanation of the limits.
 
+## Added after that (room service)
+- One shared room-service link per restaurant (migration `0022_room_service.sql`): the guest enters a room number first, then orders; each room is an ordinary table labelled "Room 204" so the live board, bills and paying work unchanged. Owner manages it on Tables & QR (optional room list, new link, print card).
+
 ## Not built yet (recommended order)
 1. **Phase 1 slice 2: look and feel.** Several design templates (minimal, dark, warm, elegant, bright), dish detail view, featured section, category images, image fallbacks and loading skeletons. Needs real food photos from restaurants to look premium.
 2. ~~Analytics~~ done (see above). Still open: traffic source (needs a `?src=` convention on QR links), weekly trend view.

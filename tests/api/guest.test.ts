@@ -13,6 +13,7 @@ import { POST as orderPOST } from '@/app/api/guest/order/route';
 import { GET as statusGET } from '@/app/api/guest/status/route';
 import { POST as requestPOST } from '@/app/api/guest/request/route';
 import { POST as eventPOST } from '@/app/api/guest/event/route';
+import { POST as roomPOST } from '@/app/api/guest/room/route';
 import { GET as healthGET } from '@/app/api/health/route';
 
 let db: TestDb;
@@ -417,5 +418,48 @@ describe('orders only near the cafe (POST /api/guest/order)', () => {
   it('does not ask anything of cafes that did not switch it on', async () => {
     const t = await freshTable();
     expect((await orderPOST(req('/api/guest/order', orderBody(t), { ip: uniqueIp() }))).status).toBe(200);
+  });
+});
+
+describe('POST /api/guest/room', () => {
+  let link: string;
+  const open = (room: string, extra: Record<string, unknown> = {}, ip = uniqueIp()) => roomPOST(req('/api/guest/room', { slug: w.A.slug, token: link, room, ...extra }, { ip }));
+  beforeAll(async () => {
+    link = 'c'.repeat(64);
+    await db.admin(`update public.restaurants set room_token = $2, room_numbers = '{101,204}' where id = $1`, [w.A.rid, link]);
+  });
+
+  it('turns the shared link and a room number into that room\'s own link, which then orders normally', async () => {
+    const res = await open('204');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const b = await json(res);
+    expect(b).toMatchObject({ label: 'Room 204' });
+    expect(b.token).toMatch(/^[0-9a-f]{64}$/);
+    expect(b.token).not.toBe(link);
+    const ordered = await orderPOST(req('/api/guest/order', orderBody({ token: b.token }), { ip: uniqueIp() }));
+    expect(ordered.status).toBe(200);
+    // the shared link on its own cannot order
+    const direct = await orderPOST(req('/api/guest/order', orderBody({ token: link }), { ip: uniqueIp() }));
+    expect(direct.status).toBe(403);
+    expect((await json(direct)).error.key).toBe('invalid_table_token');
+  });
+
+  it('says so for a room that is not on the list, refuses bad input and wrong links, and never accepts other origins', async () => {
+    expect((await json(await open('999'))).error.key).toBe('unknown_room');
+    expect((await open('999')).status).toBe(422);
+    expect((await open('')).status).toBe(400);
+    expect((await open('a;b')).status).toBe(400);
+    expect((await open('204', { token: 'd'.repeat(64) })).status).toBe(403);
+    expect((await open('204', { extra: 1 })).status).toBe(400);
+    const cross = await roomPOST(req('/api/guest/room', { slug: w.A.slug, token: link, room: '204' }, { ip: uniqueIp(), origin: 'https://evil.example' }));
+    expect(cross.status).toBe(403);
+  });
+
+  it('counts wrong-link attempts against the address like any other token guessing', async () => {
+    const ip = uniqueIp();
+    let last = 0;
+    for (let i = 0; i < 25; i++) last = (await open('204', { token: `${(i + 16).toString(16).padStart(2, '0')}`.repeat(32) }, ip)).status;
+    expect(last).toBe(429);
   });
 });

@@ -1,4 +1,5 @@
 'use client';
+import { tableName } from '@/lib/rooms';
 import { useState } from 'react';
 import { Alert } from '@/components/guest/ui';
 import { csvCell } from '@/lib/dash/csv';
@@ -84,7 +85,7 @@ export function AnalyticsView() {
           <div className="grid gap-4 md:grid-cols-2">
             {list('Most viewed dishes', 'dishes', data.top_items.map((i) => ({ name: i.name, n: i.views })), 'No dish has been opened yet.', 'views')}
             {list('Most opened categories', 'cats', data.categories.map((c) => ({ name: c.name, n: c.views })), 'No category has been tapped yet.', 'taps')}
-            {list('QR scans by table', 'tables', data.tables.map((t) => ({ name: `Table ${t.label}`, n: t.scans })), 'No table QR has been scanned yet.', 'scans')}
+            {list('QR scans by table', 'tables', data.tables.map((t) => ({ name: tableName(t.label), n: t.scans })), 'No table QR has been scanned yet.', 'scans')}
           </div>
           <div className="rounded-2xl border border-stone-200 bg-stone-100 p-4 text-sm text-stone-800">
             <p className="font-semibold">How to read these numbers</p>

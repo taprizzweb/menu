@@ -10,6 +10,29 @@ export default async function PrintPage({ searchParams }: { searchParams: Promis
   const tent = layout === 'tent';
   const c = await dashContext();
   const db = await userClient();
+  if (layout === 'room') {
+    const { data: room } = await db.rpc('mgr_get_room_service');
+    const rr = room as { enabled: boolean; token: string | null } | null;
+    const qr = rr?.enabled && rr.token ? await qrDataUri(tableUrl(c.appOrigin, c.me.restaurant.slug, rr.token)) : null;
+    return (
+      <div>
+        <div className="mb-4 flex flex-wrap items-center gap-3 print:hidden">
+          <h1 className="mr-auto text-2xl font-extrabold">Room service card</h1>
+          <PrintButton />
+        </div>
+        {!qr && <p className="print:hidden">Room service is off. Turn it on in Tables &amp; QR codes first.</p>}
+        {qr && (
+          <div className="print-tent flex flex-col items-center justify-center gap-4 p-8 text-center">
+            <p className="text-3xl font-extrabold">{c.me.restaurant.name}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qr} alt="QR code to order room service" width={320} height={320} className="h-80 w-80" />
+            <p className="text-4xl font-extrabold">Room service</p>
+            <p className="text-xl font-bold">Scan, enter your room number and order</p>
+          </div>
+        )}
+      </div>
+    );
+  }
   const { data } = await db.rpc('mgr_get_table_tokens');
   const rows = ((data ?? []) as { table_id: string; label: string; active: boolean; qr_token: string }[]).filter((r) => r.active && (!t || r.table_id === t));
   const cards = await Promise.all(rows.map(async (r) => ({ id: r.table_id, label: r.label, qr: await qrDataUri(tableUrl(c.appOrigin, c.me.restaurant.slug, r.qr_token)) })));

@@ -12,6 +12,7 @@ import { CartSheet } from './CartSheet';
 import { BillSheet, WaiterSheet } from './HelpSheets';
 import { MenuView } from './MenuView';
 import { RestaurantHero, RestaurantInfo } from './RestaurantHero';
+import { RoomPicker } from './RoomPicker';
 import { StatusView, ThankYou } from './StatusView';
 import { forgetIdempotencyKey, idempotencyKeyFor, useCart, useLiveStatus } from './hooks';
 import { IconBell, IconCart, IconList, IconReceipt, Notice, Alert } from './ui';
@@ -154,7 +155,10 @@ export function GuestApp({
       <RestaurantHero r={menu.restaurant} imageBase={imageBase} tableLabel={menu.table_label} t={t} compact={showStatus} />
 
       {!online && <div className="mx-auto max-w-5xl px-4 pt-3"><Notice>{t('state.offline')}</Notice></div>}
-      {!tokenValid && (
+      {menu.room_link && token && (
+        <div className="mx-auto max-w-5xl px-4 pt-4"><RoomPicker slug={slug} token={token} rooms={menu.rooms} /></div>
+      )}
+      {!tokenValid && !menu.room_link && (
         <div className="mx-auto max-w-5xl px-4 pt-4">
           {token ? <Alert>{t('state.invalidQr.title')}. {t('state.invalidQr.body')}</Alert> : <Notice>{t('state.noQr.title')}. {t('state.noQr.body')}</Notice>}
         </div>

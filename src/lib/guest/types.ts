@@ -30,6 +30,9 @@ export interface MenuData {
   };
   table_label?: string | null;
   token_valid?: boolean;
+  /** true when the link is the restaurant's shared room-service link (a room number is asked before ordering) */
+  room_link?: boolean;
+  rooms?: string[] | null;
   categories?: MenuCategory[];
 }
 
