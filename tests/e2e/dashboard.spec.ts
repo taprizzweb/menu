@@ -350,8 +350,8 @@ test.describe('tables and QR codes', () => {
   test('create tables, rotate a QR code with a warning, and print both layouts', async ({ page }) => {
     await loginAs(page, 'owner', '/dash/tables');
     const base = test.info().project.name === 'mobile' ? 810 : 820;
-    await page.getByLabel('From').fill(String(base));
-    await page.getByLabel('To').fill(String(base + 2));
+    await page.getByLabel('From', { exact: true }).fill(String(base));
+    await page.getByLabel('To', { exact: true }).fill(String(base + 2));
     await page.getByRole('button', { name: 'Create tables' }).click();
     await expect(page.getByText('Tables created.')).toBeVisible();
     await expect(page.getByRole('img', { name: `QR code for table ${base + 1}` })).toBeVisible();
