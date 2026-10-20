@@ -46,6 +46,8 @@ export async function createTestDb(opts: { migrate?: boolean } = {}): Promise<Te
   await root.end();
 
   const pool = new Pool({ connectionString: urlFor(name), max: 20 });
+  // dropping the database at the end can cut idle connections; that is expected and must not fail a test run
+  pool.on('error', () => undefined);
   await pool.query(readFileSync(join(__dirname, 'supabase_stub.sql'), 'utf8'));
   if (opts.migrate !== false) {
     for (const m of await migrationFiles()) {
