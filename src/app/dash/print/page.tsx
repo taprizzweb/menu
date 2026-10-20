@@ -10,6 +10,29 @@ export default async function PrintPage({ searchParams }: { searchParams: Promis
   const tent = layout === 'tent';
   const c = await dashContext();
   const db = await userClient();
+  if (layout === 'tablelink') {
+    const { data: tl } = await db.rpc('mgr_get_table_link');
+    const tr = tl as { enabled: boolean; token: string | null } | null;
+    const qr = tr?.enabled && tr.token ? await qrDataUri(tableUrl(c.appOrigin, c.me.restaurant.slug, tr.token)) : null;
+    return (
+      <div>
+        <div className="mb-4 flex flex-wrap items-center gap-3 print:hidden">
+          <h1 className="mr-auto text-2xl font-extrabold">Shared table card</h1>
+          <PrintButton />
+        </div>
+        {!qr && <p className="print:hidden">The shared table link is off. Turn it on in Tables &amp; QR codes first.</p>}
+        {qr && (
+          <div className="print-tent flex flex-col items-center justify-center gap-4 p-8 text-center">
+            <p className="text-3xl font-extrabold">{c.me.restaurant.name}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qr} alt="QR code to order at your table" width={320} height={320} className="h-80 w-80" />
+            <p className="text-4xl font-extrabold">Scan to order</p>
+            <p className="text-xl font-bold">Pick your table number, then choose your dishes</p>
+          </div>
+        )}
+      </div>
+    );
+  }
   if (layout === 'room') {
     const { data: room } = await db.rpc('mgr_get_room_service');
     const rr = room as { enabled: boolean; token: string | null } | null;

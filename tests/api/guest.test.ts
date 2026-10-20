@@ -14,6 +14,7 @@ import { GET as statusGET } from '@/app/api/guest/status/route';
 import { POST as requestPOST } from '@/app/api/guest/request/route';
 import { POST as eventPOST } from '@/app/api/guest/event/route';
 import { POST as roomPOST } from '@/app/api/guest/room/route';
+import { POST as tablePOST } from '@/app/api/guest/table/route';
 import { GET as healthGET } from '@/app/api/health/route';
 
 let db: TestDb;
@@ -461,5 +462,35 @@ describe('POST /api/guest/room', () => {
     let last = 0;
     for (let i = 0; i < 25; i++) last = (await open('204', { token: `${(i + 16).toString(16).padStart(2, '0')}`.repeat(32) }, ip)).status;
     expect(last).toBe(429);
+  });
+});
+
+describe('POST /api/guest/table', () => {
+  let link: string;
+  const open = (table: string, extra: Record<string, unknown> = {}, ip = uniqueIp()) => tablePOST(req('/api/guest/table', { slug: w.A.slug, token: link, table, ...extra }, { ip }));
+  beforeAll(async () => {
+    link = 'b'.repeat(64);
+    await db.admin(`update public.restaurants set table_token = $2 where id = $1`, [w.A.rid, link]);
+    await db.admin(`insert into public.dining_tables (restaurant_id, label) values ($1, 'LK1') on conflict do nothing`, [w.A.rid]);
+  });
+
+  it('turns the shared table link and a table name into that table\'s own link, which then orders normally', async () => {
+    const res = await open('lk1');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const b = await json(res);
+    expect(b).toMatchObject({ label: 'LK1' });
+    expect(b.token).toMatch(/^[0-9a-f]{64}$/);
+    expect((await orderPOST(req('/api/guest/order', orderBody({ token: b.token }), { ip: uniqueIp() }))).status).toBe(200);
+    expect((await orderPOST(req('/api/guest/order', orderBody({ token: link }), { ip: uniqueIp() }))).status).toBe(403);
+  });
+
+  it('refuses unknown tables, rooms, bad input, wrong links and other origins', async () => {
+    expect((await json(await open('NOPE'))).error.key).toBe('unknown_room');
+    expect((await open('NOPE')).status).toBe(422);
+    expect((await open('')).status).toBe(400);
+    expect((await open('LK1', { token: 'd'.repeat(64) })).status).toBe(403);
+    expect((await open('LK1', { extra: 1 })).status).toBe(400);
+    expect((await tablePOST(req('/api/guest/table', { slug: w.A.slug, token: link, table: 'LK1' }, { ip: uniqueIp(), origin: 'https://evil.example' }))).status).toBe(403);
   });
 });

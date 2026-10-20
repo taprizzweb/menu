@@ -115,3 +115,69 @@ describe('room service', () => {
     expect((await db.admin<any>(`select count(*)::int n from public.audit_log where restaurant_id = $1 and action = 'room_service_updated'`, [w.A.rid]))[0].n).toBeGreaterThan(0);
   });
 });
+
+describe('shared table link', () => {
+  const setLink = (uid: string, enabled: boolean, rotate = false) => rpc(db, uid, `public.mgr_set_table_link($1, $2)`, [enabled, rotate]);
+  const getLink = async (uid: string) => (await rpc(db, uid, `public.mgr_get_table_link()`))[0]!.r as { enabled: boolean; token: string | null };
+
+  it('is off until the owner turns it on; the manager can read but not change it; others cannot read it', async () => {
+    expect(await getLink(w.A.owner)).toEqual({ enabled: false, token: null });
+    expect((await rpcErr(db, w.A.manager, `public.mgr_set_table_link(true, false)`))?.code).toBe('GM011');
+    expect((await rpcErr(db, w.A.waiter, `public.mgr_get_table_link()`))?.code).toBe('GM011');
+    await setLink(w.A.owner, true);
+    const s = await getLink(w.A.manager);
+    expect(s.enabled).toBe(true);
+    expect(s.token).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('opens a real table by name (any letter case) and nothing else; rooms are never reachable from it', async () => {
+    const { token } = await getLink(w.A.owner);
+    await db.admin(`insert into public.dining_tables (restaurant_id, label) values ($1, 'A7') on conflict do nothing`, [w.A.rid]);
+    const open = await svc<{ token: string; label: string }>('guest_open_table', [w.A.slug, token, ' a7 ', null]);
+    expect(open.label).toBe('A7');
+    const o = await placeOrder(db, w.A, { token: open.token }, line(w.A.chai));
+    expect(o.table_label).toBe('A7');
+    // a table that does not exist, a room, junk and an inactive table are all "not on the list"
+    expect((await svcErr('guest_open_table', [w.A.slug, token, 'NOPE', null]))?.code).toBe('GM022');
+    await db.admin(`insert into public.dining_tables (restaurant_id, label, kind) values ($1, 'Room 5', 'room') on conflict do nothing`, [w.A.rid]);
+    expect((await svcErr('guest_open_table', [w.A.slug, token, 'Room 5', null]))?.code).toBe('GM022');
+    expect((await svcErr('guest_open_table', [w.A.slug, token, '   ', null]))?.code).toBe('GM015');
+    await db.admin(`update public.dining_tables set active = false where restaurant_id = $1 and label = 'A7'`, [w.A.rid]);
+    expect((await svcErr('guest_open_table', [w.A.slug, token, 'A7', null]))?.code).toBe('GM022');
+    await db.admin(`update public.dining_tables set active = true where restaurant_id = $1 and label = 'A7'`, [w.A.rid]);
+  });
+
+  it('the shared link itself cannot order; the menu lists only tables on a table link and only rooms on a room link', async () => {
+    const { token } = await getLink(w.A.owner);
+    expect((await orderErr(db, w.A, { token: token! }, line(w.A.chai)))?.code).toBe('GM002');
+    const m = await svc<any>('guest_get_menu', [w.A.slug, token]);
+    expect(m).toMatchObject({ table_link: true, room_link: false, token_valid: false, table_label: null, rooms: null });
+    expect(m.tables).toContain('A7');
+    expect(m.tables.some((l: string) => l.startsWith('Room'))).toBe(false);
+    // and the room link never lists tables
+    await setRooms(w.A.owner, true, ['204']);
+    const room = (await getRooms(w.A.owner)).token!;
+    const rm = await svc<any>('guest_get_menu', [w.A.slug, room]);
+    expect(rm).toMatchObject({ room_link: true, table_link: false, tables: null, rooms: ['204'] });
+    // a room link cannot open a table and a table link cannot open a room
+    expect((await svcErr('guest_open_table', [w.A.slug, room, 'A7', null]))?.code).toBe('GM002');
+    expect((await svcErr('guest_open_room', [w.A.slug, token, '204', null]))?.code).toBe('GM002');
+    expect((await svc<any>('guest_get_menu', [w.A.slug, null])).tables).toBeNull();
+  });
+
+  it('new link kills the old one, off erases it, a suspended restaurant is refused, wrong slug is refused, and it is audited', async () => {
+    const first = (await getLink(w.A.owner)).token!;
+    await setLink(w.A.owner, true, true);
+    const second = (await getLink(w.A.owner)).token!;
+    expect(second).not.toBe(first);
+    expect((await svcErr('guest_open_table', [w.A.slug, first, 'A7', null]))?.code).toBe('GM002');
+    expect((await svcErr('guest_open_table', [w.B.slug, second, 'A7', null]))?.code).toBe('GM002');
+    await db.admin(`update public.restaurants set status = 'suspended' where id = $1`, [w.A.rid]);
+    expect((await svcErr('guest_open_table', [w.A.slug, second, 'A7', null]))?.code).toBe('GM001');
+    await db.admin(`update public.restaurants set status = 'active' where id = $1`, [w.A.rid]);
+    await setLink(w.A.owner, false);
+    expect(await getLink(w.A.owner)).toEqual({ enabled: false, token: null });
+    expect((await svcErr('guest_open_table', [w.A.slug, second, 'A7', null]))?.code).toBe('GM002');
+    expect((await db.admin<any>(`select count(*)::int n from public.audit_log where restaurant_id = $1 and action = 'table_link_updated'`, [w.A.rid]))[0].n).toBeGreaterThan(0);
+  });
+});

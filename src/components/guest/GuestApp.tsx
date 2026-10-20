@@ -12,7 +12,8 @@ import { CartSheet } from './CartSheet';
 import { BillSheet, WaiterSheet } from './HelpSheets';
 import { MenuView } from './MenuView';
 import { RestaurantHero, RestaurantInfo } from './RestaurantHero';
-import { RoomPicker } from './RoomPicker';
+import { LinkPicker } from './LinkPicker';
+import { PoweredBy } from './PoweredBy';
 import { StatusView, ThankYou } from './StatusView';
 import { forgetIdempotencyKey, idempotencyKeyFor, useCart, useLiveStatus } from './hooks';
 import { IconBell, IconCart, IconList, IconReceipt, Notice, Alert } from './ui';
@@ -156,9 +157,12 @@ export function GuestApp({
 
       {!online && <div className="mx-auto max-w-5xl px-4 pt-3"><Notice>{t('state.offline')}</Notice></div>}
       {menu.room_link && token && (
-        <div className="mx-auto max-w-5xl px-4 pt-4"><RoomPicker slug={slug} token={token} rooms={menu.rooms} /></div>
+        <div className="mx-auto max-w-5xl px-4 pt-4"><LinkPicker kind="room" slug={slug} token={token} options={menu.rooms} /></div>
       )}
-      {!tokenValid && !menu.room_link && (
+      {menu.table_link && token && (
+        <div className="mx-auto max-w-5xl px-4 pt-4"><LinkPicker kind="table" slug={slug} token={token} options={menu.tables} /></div>
+      )}
+      {!tokenValid && !menu.room_link && !menu.table_link && (
         <div className="mx-auto max-w-5xl px-4 pt-4">
           {token ? <Alert>{t('state.invalidQr.title')}. {t('state.invalidQr.body')}</Alert> : <Notice>{t('state.noQr.title')}. {t('state.noQr.body')}</Notice>}
         </div>
@@ -174,6 +178,7 @@ export function GuestApp({
         )}
         {!showStatus && <RestaurantInfo r={menu.restaurant} t={t} onTrack={track} />}
       </main>
+      <PoweredBy />
 
       {canOrder && !(showStatus && closed) && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)]">

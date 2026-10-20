@@ -33,6 +33,9 @@ export interface MenuData {
   /** true when the link is the restaurant's shared room-service link (a room number is asked before ordering) */
   room_link?: boolean;
   rooms?: string[] | null;
+  /** true on the shared table link (the guest picks a table from `tables`) */
+  table_link?: boolean;
+  tables?: string[] | null;
   categories?: MenuCategory[];
 }
 

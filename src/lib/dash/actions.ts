@@ -25,6 +25,7 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
   settings: { method: 'GET', rpc: 'mgr_get_settings', args: none },
   staff: { method: 'GET', rpc: 'mgr_get_staff', args: none },
   tables: { method: 'GET', rpc: 'mgr_get_table_tokens', args: none, result: (rows: unknown[]) => ({ tables: rows }) },
+  'table-link': { method: 'GET', rpc: 'mgr_get_table_link', args: none },
   'room-service': { method: 'GET', rpc: 'mgr_get_room_service', args: none },
   report: { method: 'GET', rpc: 'mgr_report', schema: S.reportQuery, args: (q: { range: string }) => ({ p_range: q.range }) },
   analytics: { method: 'GET', rpc: 'mgr_analytics', schema: S.analyticsQuery, args: (q: { range: string }) => ({ p_range: q.range }) },
@@ -58,6 +59,7 @@ export const DASH_ACTIONS: Record<string, DashAction> = {
     },
     result: () => ({ ok: true }),
   },
+  'table-link-save': { method: 'POST', rpc: 'mgr_set_table_link', schema: S.tableLinkSave, args: (b) => ({ p_enabled: b.enabled, p_rotate: b.rotate ?? false }), result: () => ({ ok: true }) },
   'profile-save': {
     method: 'POST', rpc: 'mgr_update_profile', schema: S.profileSave,
     args: (b) => ({ p_tagline: b.tagline, p_description: b.description, p_logo: b.logo_path, p_banner: b.banner_path, p_address: b.address, p_hours: b.hours_text, p_explore: b.explore_code }),
