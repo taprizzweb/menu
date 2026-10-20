@@ -42,6 +42,10 @@ export const roomBody = z.object({ slug, token, room: text(10).pipe(z.string().m
 
 export const tableLinkBody = z.object({ slug, token, table: text(20).pipe(z.string().min(1)) }).strict();
 
+export const helpBody = z
+  .object({ slug, token, room: text(10).pipe(z.string().min(1)), topics: z.array(text(40).pipe(z.string().min(1))).max(12), note: text(300).optional() })
+  .strict();
+
 export const requestBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('waiter'), slug, token, reason: z.enum(['water', 'cutlery', 'cleaning', 'help', 'other']) }).strict(),
   z.object({ type: z.literal('bill'), slug, token, pay_mode: z.enum(['cash', 'upi', 'card']) }).strict(),

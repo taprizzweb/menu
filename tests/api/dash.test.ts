@@ -385,3 +385,33 @@ describe('dish sizes and options through the API', () => {
     expect((await post('menu-import', { rows: [{ ...row, name: 'Too many', sizes: Array.from({ length: 9 }, (_, i) => ({ name: `s${i}`, price_paise: 1 })) }] })).status).toBe(400);
   });
 });
+
+describe('call for problems settings through the API', () => {
+  it('owner and manager read them; only the owner changes them; waiters and the kitchen see nothing', async () => {
+    for (const uid of [w.A.owner, w.A.manager]) { as(uid); expect((await get('help-link')).status, uid).toBe(200); }
+    for (const uid of [w.A.waiter, w.A.kitchen, w.stranger]) { as(uid); expect((await get('help-link')).status, uid).toBe(403); }
+    as(w.A.manager);
+    expect((await post('help-link-save', { enabled: true, topics: ['Towel'] })).status).toBe(403);
+    as(w.A.owner);
+    expect((await post('help-link-save', { enabled: true, topics: [' Towel ', 'Wi-Fi down', 'towel'] })).status).toBe(200);
+    const g = await json(await get('help-link'));
+    expect(g).toMatchObject({ enabled: true, topics: ['Towel', 'Wi-Fi down'] });
+    expect(g.token).toMatch(/^[0-9a-f]{64}$/);
+    // a new link replaces the token; turning off erases it
+    expect((await post('help-link-save', { enabled: true, topics: [], rotate: true })).status).toBe(200);
+    expect((await json(await get('help-link'))).token).not.toBe(g.token);
+    expect((await post('help-link-save', { enabled: false, topics: [] })).status).toBe(200);
+    expect(await json(await get('help-link'))).toMatchObject({ enabled: false, token: null });
+  });
+  it('refuses a bad shape and other restaurants cannot see this one\'s link', async () => {
+    as(w.A.owner);
+    expect((await post('help-link-save', { enabled: true, topics: Array.from({ length: 21 }, (_, i) => `t${i}`) })).status).toBe(400);
+    expect((await post('help-link-save', { enabled: true, topics: ['x'.repeat(41)] })).status).toBe(400);
+    expect((await post('help-link-save', { enabled: true, topics: [''] })).status).toBe(400);
+    expect((await post('help-link-save', { enabled: 'yes', topics: [] })).status).toBe(400);
+    expect((await post('help-link-save', { enabled: true, topics: [], extra: 1 })).status).toBe(400);
+    expect((await post('help-link-save', { enabled: true, topics: [] }, { origin: 'https://evil.example' })).status).toBe(403);
+    as(w.B.owner);
+    expect((await json(await get('help-link'))).enabled).toBe(false);
+  });
+});

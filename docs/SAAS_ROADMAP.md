@@ -25,6 +25,9 @@ Public profile: tagline, about, logo, banner, phone, WhatsApp, address, opening 
 ## Added after that (sizes and options)
 - Dish sizes (Small / Large, Half / Full...) with their own prices, and option groups (required or optional, a maximum, extra prices): migration `0024_item_sizes_options.sql`. Prices are always worked out by the database from ids; the order line keeps a readable name such as "Oreo Shake (Large) + Choco, Cream", so staff screens, bills and reports need no change. CSV `sizes` column. Still open: option availability (sold-out single options), per-size photos.
 
+## Added after that (call for problems)
+- Hotel "Call for problems" (migration `0025_help_requests.sql`): one shared link per restaurant with the owner's list of problems; the guest types the room, taps problems, may add a note; it appears live on reception's staff screen (own sound, Done button). Still open: housekeeping / maintenance roles and screens, time-to-resolve timers, a status shown to the guest.
+
 ## Not built yet (recommended order)
 1. **Phase 1 slice 2: look and feel.** Several design templates (minimal, dark, warm, elegant, bright), dish detail view, featured section, category images, image fallbacks and loading skeletons. Needs real food photos from restaurants to look premium.
 2. ~~Analytics~~ done (see above). Still open: traffic source (needs a `?src=` convention on QR links), weekly trend view.

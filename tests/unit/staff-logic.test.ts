@@ -82,17 +82,27 @@ describe('closing a table', () => {
 describe('alert bookkeeping', () => {
   const board = { orders: [order('o1', 'placed'), order('o2', 'preparing')], requests: [req('r1', 'waiter'), req('r2', 'bill')] };
   it('only un-accepted orders, open calls and open bills are pending', () => {
-    expect(pendingAlerts(board, 'waiter')).toEqual({ order: ['o1'], waiter: ['r1'], bill: ['r2'] });
+    expect(pendingAlerts(board, 'waiter')).toEqual({ order: ['o1'], waiter: ['r1'], bill: ['r2'], help: [] });
   });
   it('the kitchen only gets order alerts', () => {
-    expect(pendingAlerts(board, 'kitchen')).toEqual({ order: ['o1'], waiter: [], bill: [] });
+    expect(pendingAlerts(board, 'kitchen')).toEqual({ order: ['o1'], waiter: [], bill: [], help: [] });
   });
   it('accepting an order or resolving a request removes it (alert stops repeating)', () => {
     const after = { orders: [order('o1', 'preparing')], requests: [] };
     expect(activeKinds(pendingAlerts(after, 'owner'))).toEqual([]);
   });
-  it('most urgent kind first: bill, then waiter, then order', () => {
+  it('most urgent kind first: bill, then a guest problem, then waiter, then order', () => {
     expect(activeKinds(pendingAlerts(board, 'owner'))).toEqual(['bill', 'waiter', 'order']);
+    const withHelp = { ...board, help: [{ id: 'h1', room: '201', topics: ['Towel or bedsheet'], note: null, created_at: '2026-10-20T10:00:00Z' }] };
+    expect(activeKinds(pendingAlerts(withHelp, 'owner'))).toEqual(['bill', 'help', 'waiter', 'order']);
+  });
+  it('guest problems alert reception staff, never the kitchen, and stop once someone taps Done', () => {
+    const withHelp = { ...board, help: [{ id: 'h1', room: '201', topics: [], note: 'Light is out', created_at: '2026-10-20T10:00:00Z' }] };
+    expect(pendingAlerts(withHelp, 'waiter').help).toEqual(['h1']);
+    expect(pendingAlerts(withHelp, 'manager').help).toEqual(['h1']);
+    expect(pendingAlerts(withHelp, 'kitchen').help).toEqual([]);
+    expect(pendingAlerts({ ...withHelp, help: [] }, 'waiter').help).toEqual([]);
+    expect(pendingAlerts(board, 'waiter').help).toEqual([]); // an older board without the list
   });
   it('announces only genuinely new items (and everything on first load)', () => {
     const first = pendingAlerts(board, 'owner');
@@ -101,7 +111,8 @@ describe('alert bookkeeping', () => {
     expect(newKinds(prev, first)).toEqual([]);
     const withNew = { ...first, order: ['o1', 'o3'] };
     expect(newKinds(prev, withNew)).toEqual(['order']);
-    expect(newKinds(prev, { order: [], waiter: [], bill: [] })).toEqual([]);
+    expect(newKinds(prev, { order: [], waiter: [], bill: [], help: [] })).toEqual([]);
+    expect(newKinds(prev, { ...first, help: ['h9'] })).toEqual(['help']);
   });
   it('repeats every 6 seconds', () => {
     expect(ALERT_REPEAT_MS).toBe(6000);
@@ -110,8 +121,8 @@ describe('alert bookkeeping', () => {
 
 describe('realtime subscription', () => {
   const id = '8d3f1a52-6c0e-4b7a-9f21-3e5a7c9b1d44';
-  it('listens to orders, requests and table sessions only, filtered to one restaurant', () => {
-    expect([...REALTIME_TABLES]).toEqual(['orders', 'service_requests', 'table_sessions']);
+  it('listens to orders, requests, table sessions and guest problems only, filtered to one restaurant', () => {
+    expect([...REALTIME_TABLES]).toEqual(['orders', 'service_requests', 'table_sessions', 'help_requests']);
     expect(realtimeFilter(id)).toBe(`restaurant_id=eq.${id}`);
     expect(realtimeChannel(id)).toBe(`board-${id}`);
   });

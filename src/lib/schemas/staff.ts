@@ -12,6 +12,7 @@ export const orderStatusBody = z
   .strict();
 
 export const requestDoneBody = z.object({ request_id: uuid }).strict();
+export const helpDoneBody = z.object({ help_id: uuid }).strict();
 
 export const closeSessionBody = z
   .object({ session_id: uuid, force: z.boolean().optional(), reason: reason.optional(), pay_mode: z.enum(['cash', 'upi', 'card']).optional() })

@@ -146,7 +146,7 @@ export function useAlerts(board: BoardData | null, role: Role): Alerts {
   const sound = useMemo(() => new AlertSound(), []);
   const [soundOn, setSoundOn] = useState(false);
   const prev = useRef<ReturnType<typeof toSets> | null>(null);
-  const pending = useRef<Record<AlertKind, string[]>>({ order: [], waiter: [], bill: [] });
+  const pending = useRef<Record<AlertKind, string[]>>({ order: [], waiter: [], bill: [], help: [] });
   const repeat = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const playKinds = useCallback((kinds: AlertKind[]) => {

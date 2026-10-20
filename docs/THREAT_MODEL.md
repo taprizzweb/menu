@@ -19,6 +19,12 @@ Actors: **guest** (anyone with a phone at a table), **outsider** (anyone on the 
 - **Tested:** `supabase/tests/rooms.test.ts`, `tests/api/guest.test.ts`, `tests/e2e/guest.spec.ts`, `tests/e2e/dashboard.spec.ts`.
 - **Remaining risk:** anyone holding the link can order to any room number on the list (a prank). Orders still go to staff first, who see the room and the dishes; staff can cancel with a reason. A room PIN or guest name is a possible later step. Accepted.
 
+### 2c. Call for problems (migration 0025)
+- **How it works:** one shared link (`restaurants.help_token`, 256-bit) lets a guest post a problem; it cannot read anything. Topics must come from the owner's list, the room number is checked against the owner's room list when there is one, and the note is plain text (max 300), always rendered as text.
+- **Stops it:** 20 sends per address per 10 minutes, wrong-link guesses counted with other token guesses, at most 3 open problems per room and 300 per restaurant, an identical message within 10 minutes is the same request, "New link" kills every old copy, turning it off erases the token, only reception staff (not the kitchen) can read or close problems, and other restaurants never see them.
+- **Tested:** `supabase/tests/help.test.ts`, `tests/api/{guest,staff,dash}.test.ts`, `tests/e2e/{guest,staff,dashboard}.spec.ts`.
+- **Remaining risk:** anyone with the link can raise a false problem for a room (a prank). Reception sees the room and the text and can simply tap Done; the caps keep it from flooding the screen. Accepted.
+
 ### 3a. Sizes and options (migration 0024)
 - Size and option ids are the only things the browser sends. The database finds the size price and extra prices itself, refuses ids that belong to another dish or restaurant, repeated options, more than the allowed number in a group, a missing required choice, a size on a dish without sizes, and sold-out sizes; all inside the same transaction that locks the prices it read.
 - **Tested:** `supabase/tests/choices.test.ts`, `tests/api/guest.test.ts`, `tests/e2e/guest.spec.ts`.

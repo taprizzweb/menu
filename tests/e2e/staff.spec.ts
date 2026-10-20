@@ -180,6 +180,64 @@ test.describe('live orders', () => {
   });
 });
 
+test.describe('guest problems (call for problems)', () => {
+  const LINK = 'c3'.repeat(32);
+  const post = (request: APIRequestContext, body: Record<string, unknown>) =>
+    request.post('/api/guest/help', { headers: { origin: new URL(process.env.E2E_BASE_URL ?? 'http://localhost:3100').origin }, data: { slug: 'spice-garden', token: LINK, ...body } });
+  test.beforeEach(async () => {
+    await q(`update public.restaurants set help_token = $1, room_numbers = '{}', help_topics = '{Towel or bedsheet,WiFi not working,Light not working}' where slug = 'spice-garden'`, [LINK]);
+    await q(`delete from public.help_requests where restaurant_id = (select id from public.restaurants where slug = 'spice-garden')`);
+  });
+  test.afterEach(async () => {
+    await q(`update public.restaurants set help_token = null where slug = 'spice-garden'`);
+    await q(`delete from public.help_requests where restaurant_id = (select id from public.restaurants where slug = 'spice-garden')`);
+  });
+
+  test('a problem sent from the help link appears live on the reception screen, and Done removes it; the kitchen never sees it', async ({ page, request }, info) => {
+    await loginAs(page, 'waiter');
+    const res = await post(request, { room: '201', topics: ['Towel or bedsheet', 'WiFi not working'], note: 'The router light is red' });
+    expect(res.status(), await res.text()).toBe(200);
+    const card = page.locator('[data-testid="help-201"]');
+    await expect(card).toContainText('Room 201', { timeout: 12_000 });
+    await expect(card).toContainText('Towel or bedsheet');
+    await expect(card).toContainText('WiFi not working');
+    await expect(card).toContainText('The router light is red');
+    await expect(page.getByRole('heading', { name: /Guest problems/ })).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/${info.project.name}-staff-help.png`, fullPage: true });
+
+    // a second problem from another room is its own card; the same message twice is one card
+    await post(request, { room: '305', topics: ['Light not working'] });
+    await post(request, { room: '305', topics: ['Light not working'] });
+    await expect(page.locator('[data-testid="help-305"]')).toHaveCount(1, { timeout: 12_000 });
+
+    await card.getByRole('button', { name: 'Done' }).click();
+    await expect(card).toHaveCount(0);
+    const [r] = await q<{ status: string; resolved_by: string | null }>(`select status, resolved_by from public.help_requests where room = '201'`);
+    expect(r!.status).toBe('done');
+    expect(r!.resolved_by).toBeTruthy();
+    await expect(page.locator('[data-testid="help-305"]')).toHaveCount(1);
+  });
+
+  test('the kitchen screen does not show guest problems', async ({ page, request }) => {
+    await post(request, { room: '410', topics: ['WiFi not working'] });
+    await loginAs(page, 'kitchen');
+    await expect(page.getByRole('heading', { name: 'Orders' })).toBeVisible();
+    await expect(page.locator('[data-testid="help-410"]')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Guest problems/ })).toHaveCount(0);
+  });
+
+  test('the board with a guest problem has no accessibility violations and its Done button is large enough', async ({ page, request }) => {
+    await loginAs(page, 'waiter');
+    await post(request, { room: '502', topics: ['Towel or bedsheet'], note: 'Two please' });
+    await expect(page.locator('[data-testid="help-502"]')).toBeVisible({ timeout: 12_000 });
+    await page.waitForTimeout(400);
+    const r = await new AxeBuilder({ page: page as unknown as AxePage }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(r.violations.map((v) => `${v.id}: ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
+    const box = await page.locator('[data-testid="help-502"]').getByRole('button', { name: 'Done' }).boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  });
+});
+
 test.describe('calls, bills and marking tables paid', () => {
   test('waiter calls and bill requests show exactly what to bring for each payment mode', async ({ page, request }, info) => {
     const calls = await Promise.all([newTable(), newTable(), newTable(), newTable()]);

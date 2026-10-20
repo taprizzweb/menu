@@ -51,6 +51,9 @@ export const openRoom = (slug: string, token: string, room: string) =>
 export const openTable = (slug: string, token: string, table: string) =>
   post<{ token: string; label: string }>('/api/guest/table', { slug, token, table });
 
+export const sendHelp = (input: { slug: string; token: string; room: string; topics: string[]; note?: string }) =>
+  post<{ room: string; replayed: boolean }>('/api/guest/help', input);
+
 export const callWaiter = (slug: string, token: string, reason: WaiterReason) =>
   post<{ request: { type: string; status: string } }>('/api/guest/request', { type: 'waiter', slug, token, reason });
 

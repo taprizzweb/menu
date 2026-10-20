@@ -1,8 +1,9 @@
+import type { HelpLink } from '@/components/dash/HelpLinkCard';
 import type { TableLink } from '@/components/dash/TableLinkCard';
 import type { RoomService } from '@/components/dash/RoomServiceCard';
 import { TablesManager, type TableRow } from '@/components/dash/TablesManager';
 import { dashContext } from '@/lib/dash/context';
-import { qrDataUri, tableUrl } from '@/lib/dash/qr';
+import { helpUrl, qrDataUri, tableUrl } from '@/lib/dash/qr';
 import { userClient } from '@/lib/supabase/server';
 
 export default async function TablesPage() {
@@ -21,5 +22,9 @@ export default async function TablesPage() {
   const tr = (tl ?? { enabled: false, token: null }) as { enabled: boolean; token: string | null };
   const turl = tr.enabled && tr.token ? tableUrl(c.appOrigin, c.me.restaurant.slug, tr.token) : null;
   const tableLink: TableLink = { enabled: tr.enabled, url: turl, qr: turl ? await qrDataUri(turl) : null };
-  return <TablesManager tables={tables} roomService={roomService} tableLink={tableLink} canEditLinks={c.me.role === 'owner'} />;
+  const { data: hl } = await db.rpc('mgr_get_help_link');
+  const hr = (hl ?? { enabled: false, token: null, topics: [] }) as { enabled: boolean; token: string | null; topics: string[] };
+  const hurl = hr.enabled && hr.token ? helpUrl(c.appOrigin, c.me.restaurant.slug, hr.token) : null;
+  const helpLink: HelpLink = { enabled: hr.enabled, url: hurl, qr: hurl ? await qrDataUri(hurl) : null, topics: hr.topics ?? [] };
+  return <TablesManager tables={tables} roomService={roomService} tableLink={tableLink} helpLink={helpLink} canEditLinks={c.me.role === 'owner'} />;
 }

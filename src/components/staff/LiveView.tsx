@@ -5,7 +5,7 @@ import { formatPaise } from '@/lib/money';
 import { counterInstruction } from '@/lib/pay';
 import {
   WAITER_REASON_LABEL, closeOptions, formatAge, orderActions, waitSeverity,
-  type BoardData, type BoardOrder, type BoardRequest, type BoardSession, type OrderAction, type Role, type Severity,
+  type BoardData, type BoardHelp, type BoardOrder, type BoardRequest, type BoardSession, type OrderAction, type Role, type Severity,
 } from '@/lib/staff/logic';
 import { Alert, IconBell, IconCheck, IconReceipt, Sheet, btnPrimary, btnSecondary } from '@/components/guest/ui';
 
@@ -27,6 +27,7 @@ export interface Actions {
   advance: (orderId: string, to: OrderAction['to']) => void;
   cancel: (order: BoardOrder) => void;
   resolve: (requestId: string) => void;
+  resolveHelp: (helpId: string) => void;
   close: (session: BoardSession) => void;
   busy: Set<string>;
 }
@@ -97,6 +98,30 @@ function RequestCard({ r, nowMs, actions }: { r: BoardRequest; nowMs: number; ac
   );
 }
 
+function HelpCard({ h, nowMs, actions }: { h: BoardHelp; nowMs: number; actions: Actions }) {
+  const age = (nowMs - Date.parse(h.created_at)) / 1000;
+  return (
+    <li data-testid={`help-${h.room}`} className="rounded-2xl border-2 border-violet-800 bg-violet-50 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wide text-violet-950"><IconBell /> Guest problem</p>
+          <p className="mt-1 text-2xl font-extrabold leading-none">{tableName(`Room ${h.room}`)}</p>
+        </div>
+        <span className="text-base font-bold tabular-nums">{formatAge(age)}</span>
+      </div>
+      {h.topics.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-2" aria-label="Problems">
+          {h.topics.map((t) => <li key={t} className="rounded-lg bg-violet-900 px-3 py-1.5 text-base font-bold text-white">{t}</li>)}
+        </ul>
+      )}
+      {h.note && <p className="mt-3 rounded-lg bg-white px-3 py-2 text-base font-semibold">“{h.note}”</p>}
+      <button type="button" disabled={actions.busy.has(h.id)} onClick={() => actions.resolveHelp(h.id)} className={`${btnPrimary} mt-3 w-full !bg-stone-900`}>
+        <IconCheck /> Done
+      </button>
+    </li>
+  );
+}
+
 function SessionCard({ s, role, nowMs, actions }: { s: BoardSession; role: Role; nowMs: number; actions: Actions }) {
   const opts = closeOptions(role, s);
   const open = formatAge((nowMs - Date.parse(s.opened_at)) / 1000);
@@ -132,6 +157,17 @@ export function LiveView({ board, role, nowMs, amber, red, actions }: { board: B
   ];
   return (
     <div className="space-y-8">
+      {role !== 'kitchen' && (board.help?.length ?? 0) > 0 && (
+        <section aria-labelledby="help-h">
+          <h2 id="help-h" className="mb-3 flex items-center gap-2 text-xl font-extrabold">
+            Guest problems <span className="rounded-full bg-violet-900 px-2.5 py-0.5 text-sm text-white">{board.help!.length}</span>
+          </h2>
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {board.help!.map((h) => <HelpCard key={h.id} h={h} nowMs={nowMs} actions={actions} />)}
+          </ul>
+        </section>
+      )}
+
       {role !== 'kitchen' && (
         <section aria-labelledby="calls-h">
           <h2 id="calls-h" className="mb-3 flex items-center gap-2 text-xl font-extrabold">

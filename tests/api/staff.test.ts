@@ -7,6 +7,7 @@ import { GET as boardGET } from '@/app/api/staff/board/route';
 import { GET as itemsGET } from '@/app/api/staff/items/route';
 import { POST as statusPOST } from '@/app/api/staff/order-status/route';
 import { POST as donePOST } from '@/app/api/staff/request-done/route';
+import { POST as helpDonePOST } from '@/app/api/staff/help-done/route';
 import { POST as closePOST } from '@/app/api/staff/close-session/route';
 import { POST as availPOST } from '@/app/api/staff/availability/route';
 import { POST as loginPOST } from '@/app/api/auth/login/route';
@@ -330,3 +331,38 @@ describe('POST /api/auth/logout', () => {
 });
 
 void APP;
+
+describe('guest problems on the staff board', () => {
+  const call = (b: unknown) => post(helpDonePOST, '/api/staff/help-done', b);
+  const makeHelp = async (t: 'A' | 'B' = 'A') => {
+    const [h] = await db.admin<{ id: string }>(`insert into public.help_requests (restaurant_id, room, topics, note) values ($1, '201', '{Towel or bedsheet}', 'Two please') returning id`, [w[t].rid]);
+    return h!.id;
+  };
+  it('the board lists them for reception staff, not for the kitchen, and never across restaurants', async () => {
+    const id = await makeHelp();
+    for (const uid of [w.A.owner, w.A.manager, w.A.waiter]) {
+      as(uid);
+      const b = await json(await boardGET(req('/api/staff/board')));
+      expect(b.help.find((x: any) => x.id === id)).toMatchObject({ room: '201', topics: ['Towel or bedsheet'], note: 'Two please' });
+    }
+    as(w.A.kitchen);
+    expect((await json(await boardGET(req('/api/staff/board')))).help).toEqual([]);
+    as(w.B.waiter);
+    expect((await json(await boardGET(req('/api/staff/board')))).help.some((x: any) => x.id === id)).toBe(false);
+  });
+  it('a waiter marks one done (a double tap is fine); the kitchen, other restaurants and signed-out visitors cannot', async () => {
+    const id = await makeHelp();
+    as(w.A.kitchen);
+    expect((await call({ help_id: id })).status).toBe(403);
+    as(w.B.waiter);
+    expect((await call({ help_id: id })).status).toBe(404);
+    as(w.A.waiter);
+    expect((await call({ help_id: id })).status).toBe(200);
+    expect((await call({ help_id: id })).status).toBe(200);
+    expect((await json(await boardGET(req('/api/staff/board')))).help.some((x: any) => x.id === id)).toBe(false);
+    expect((await call({ help_id: 'bad' })).status).toBe(400);
+    expect((await call({ help_id: id, extra: 1 })).status).toBe(400);
+    as(null);
+    expect((await call({ help_id: id })).status).toBe(401);
+  });
+});

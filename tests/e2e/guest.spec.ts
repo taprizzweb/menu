@@ -215,6 +215,97 @@ test.describe('sizes and options', () => {
   });
 });
 
+test.describe('call for problems page', () => {
+  const LINK = 'd4'.repeat(32);
+  const on = (rooms = '{}') => q(`update public.restaurants set help_token = $1, room_numbers = $2::text[], help_topics = '{Towel or bedsheet,Water not coming,WiFi not working}' where slug = 'spice-garden'`, [LINK, rooms]);
+  const off = async () => {
+    await q(`update public.restaurants set help_token = null, room_numbers = '{}' where slug = 'spice-garden'`);
+    await q(`delete from public.help_requests where restaurant_id = (select id from public.restaurants where slug = 'spice-garden')`);
+  };
+
+  test('a guest types the room, taps the problems, adds a note and sends; it is saved for reception', async ({ page }) => {
+    await on();
+    try {
+      await page.goto(`/spice-garden/help?k=${LINK}`);
+      await expect(page.getByRole('heading', { level: 1, name: 'Call for problems' })).toBeVisible();
+      await expect(page.getByText('Powered by')).toBeVisible();
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-help-1-form.png`, fullPage: true });
+
+      // an empty form explains itself, nothing is sent
+      await page.getByRole('button', { name: 'Send to reception' }).click();
+      await expect(alertWith(page, 'Please enter your room number')).toBeVisible();
+      await page.getByLabel('Your room number').fill('201');
+      await page.getByRole('button', { name: 'Send to reception' }).click();
+      await expect(alertWith(page, 'Please tap a problem or write a few words')).toBeVisible();
+
+      await page.getByLabel('Towel or bedsheet').check({ force: true });
+      await page.getByLabel('WiFi not working').check({ force: true });
+      await page.getByLabel('Anything else? (optional)').fill('The router light is red');
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-help-2-filled.png`, fullPage: true });
+      await page.getByRole('button', { name: 'Send to reception' }).click();
+      await expect(page.getByRole('heading', { name: 'Sent to reception' })).toBeVisible();
+      await expect(page.getByText('Room 201: the team has been told')).toBeVisible();
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-help-3-sent.png`, fullPage: true });
+
+      const [row] = await q<{ room: string; topics: string[]; note: string; status: string }>(`select room, topics, note, status from public.help_requests where restaurant_id = (select id from public.restaurants where slug = 'spice-garden') order by created_at desc limit 1`);
+      expect(row).toEqual({ room: '201', topics: ['Towel or bedsheet', 'WiFi not working'], note: 'The router light is red', status: 'open' });
+
+      await page.getByRole('button', { name: 'Report another problem' }).click();
+      await expect(page.getByRole('button', { name: 'Send to reception' })).toBeVisible();
+    } finally {
+      await off();
+    }
+  });
+
+  test('a note alone is enough; with a room list the guest picks from it', async ({ page }) => {
+    await on('{101,102,201}');
+    try {
+      await page.goto(`/spice-garden/help?k=${LINK}`);
+      await page.getByLabel('Your room number').selectOption('102');
+      await page.getByLabel('Anything else? (optional)').fill('The window will not close');
+      await page.getByRole('button', { name: 'Send to reception' }).click();
+      await expect(page.getByRole('heading', { name: 'Sent to reception' })).toBeVisible();
+      const [row] = await q<{ room: string; topics: string[]; note: string }>(`select room, topics, note from public.help_requests where restaurant_id = (select id from public.restaurants where slug = 'spice-garden') order by created_at desc limit 1`);
+      expect(row).toEqual({ room: '102', topics: [], note: 'The window will not close' });
+    } finally {
+      await off();
+    }
+  });
+
+  test('a wrong, missing or switched-off link shows a friendly message and a wrong restaurant is not found', async ({ page }) => {
+    await on();
+    try {
+      await page.goto(`/spice-garden/help?k=${'e5'.repeat(32)}`);
+      await expect(page.getByRole('heading', { name: 'This link is not valid' })).toBeVisible();
+      await page.goto('/spice-garden/help');
+      await expect(page.getByRole('heading', { name: 'This link is not valid' })).toBeVisible();
+      await page.goto(`/spice-garden/help?k=not-hex`);
+      await expect(page.getByRole('heading', { name: 'This link is not valid' })).toBeVisible();
+      expect((await page.goto(`/no-such-place/help?k=${LINK}`))!.status()).toBe(404);
+    } finally {
+      await off();
+    }
+    await page.goto(`/spice-garden/help?k=${LINK}`);
+    await expect(page.getByRole('heading', { name: 'This link is not valid' })).toBeVisible();
+  });
+
+  test('the help page has no accessibility violations and every control is at least 44px tall', async ({ page }) => {
+    await on();
+    try {
+      await page.goto(`/spice-garden/help?k=${LINK}`);
+      await expect(page.getByRole('button', { name: 'Send to reception' })).toBeVisible();
+      const r = await new AxeBuilder({ page: page as unknown as AxePage }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+      expect(r.violations.map((v) => `${v.id}: ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
+      for (const c of await page.locator('label:has(input[type=checkbox]), button, input[type=text], input:not([type]), select, textarea').all()) {
+        const b = await c.boundingBox();
+        if (b) expect(b.height, await c.innerText().catch(() => 'control')).toBeGreaterThanOrEqual(44);
+      }
+    } finally {
+      await off();
+    }
+  });
+});
+
 test.describe('guest journey', () => {
   test('scan → order → live status → call waiter → ask bill → paid → thank-you', async ({ page }, info) => {
     const t = await newTable();

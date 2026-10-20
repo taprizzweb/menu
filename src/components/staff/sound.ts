@@ -11,11 +11,13 @@ interface Tone {
   notes: Note[];
 }
 
-/** Three clearly different tones, readable in a noisy kitchen: chime (order), triple beep (waiter), rising triad (bill). */
+/** Four clearly different tones, readable in a noisy kitchen: chime (order), triple beep (waiter), rising triad (bill), ding-dong (guest problem). */
 export const TONES: Record<AlertKind, Tone> = {
   order: { wave: 'sine', gain: 0.35, notes: [{ freq: 880, at: 0, dur: 0.2 }, { freq: 660, at: 0.22, dur: 0.35 }] },
   waiter: { wave: 'square', gain: 0.18, notes: [{ freq: 1100, at: 0, dur: 0.1 }, { freq: 1100, at: 0.17, dur: 0.1 }, { freq: 1100, at: 0.34, dur: 0.1 }] },
   bill: { wave: 'triangle', gain: 0.4, notes: [{ freq: 523, at: 0, dur: 0.16 }, { freq: 659, at: 0.18, dur: 0.16 }, { freq: 784, at: 0.36, dur: 0.34 }] },
+  // a guest problem: ding-dong-ding-dong, unlike the other three
+  help: { wave: 'sine', gain: 0.42, notes: [{ freq: 988, at: 0, dur: 0.14 }, { freq: 740, at: 0.17, dur: 0.14 }, { freq: 988, at: 0.34, dur: 0.14 }, { freq: 740, at: 0.51, dur: 0.3 }] },
 };
 
 /** Browsers only allow sound after a tap, so `enable()` must be called from a click handler. */

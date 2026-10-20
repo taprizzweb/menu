@@ -90,6 +90,7 @@ export const roomServiceSave = z
     if (!r.ok) ctx.addIssue({ code: 'custom', path: ['rooms'], message: r.error });
   });
 
+export const helpLinkSave = z.object({ enabled: z.boolean(), topics: z.array(name(40)).max(20), rotate: z.boolean().optional() }).strict();
 export const tableLinkSave = z.object({ enabled: z.boolean(), rotate: z.boolean().optional() }).strict();
 
 export const settingsSave = z

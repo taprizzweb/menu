@@ -245,6 +245,42 @@ test.describe('dish sizes and options', () => {
 });
 
 test.describe('tables and QR codes', () => {
+  test('call for problems: turn on, edit the problems, see link and QR, print the card, new link, turn off', async ({ page }) => {
+    await q(`update public.restaurants set help_token = null where slug = 'spice-garden'`);
+    try {
+      await loginAs(page, 'owner', '/dash/tables');
+      const section = page.getByRole('region', { name: 'Call for problems link' });
+      await expect(section).toContainText('Off');
+      await expect(section.getByLabel('Problems guests can tap (one per line)')).toHaveValue(/WiFi not working/);
+      await section.getByLabel('Problems guests can tap (one per line)').fill('Towel\nWiFi down\n  Minibar empty  \n');
+      await section.getByRole('button', { name: 'Turn on call for problems' }).click();
+      await expect(page.getByText('Call for problems is on.')).toBeVisible();
+      await expect(section.getByRole('img', { name: 'QR code for the call for problems link' })).toBeVisible();
+      const read = async () => (await q<{ help_token: string | null; help_topics: string[] }>(`select help_token, help_topics from public.restaurants where slug = 'spice-garden'`))[0]!;
+      const first = await read();
+      expect(first.help_token).toMatch(/^[0-9a-f]{64}$/);
+      expect(first.help_topics).toEqual(['Towel', 'WiFi down', 'Minibar empty']);
+      await expect(section.getByLabel('Problems link')).toHaveValue(new RegExp(`/spice-garden/help\\?k=${first.help_token}$`));
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-dash-help-link.png`, fullPage: true });
+
+      page.once('dialog', (d) => void d.accept());
+      await section.getByRole('button', { name: 'New link' }).click();
+      await expect(page.getByText('New link created.').first()).toBeVisible();
+      expect((await read()).help_token).not.toBe(first.help_token);
+
+      await page.goto('/dash/print?layout=help');
+      await expect(page.getByRole('heading', { name: 'Call for problems card' })).toBeVisible();
+      await expect(page.getByRole('img', { name: 'QR code to call for problems' })).toBeVisible();
+
+      await page.goto('/dash/tables');
+      await section.getByRole('button', { name: 'Turn off' }).click();
+      await expect(page.getByText('Call for problems is off.')).toBeVisible();
+      expect((await read()).help_token).toBeNull();
+    } finally {
+      await q(`update public.restaurants set help_token = null, help_topics = array['Towel or bedsheet','Room cleaning','Water not coming','Hot water not coming','Light not working','AC or heater problem','TV not working','WiFi not working','Room service','Door lock or key problem','Noise or other guests','Medical help'] where slug = 'spice-garden'`);
+    }
+  });
+
   test('shared table link: turn on, see link and QR, print the card, new link, turn off', async ({ page }) => {
     await q(`update public.restaurants set table_token = null where slug = 'spice-garden'`);
     try {

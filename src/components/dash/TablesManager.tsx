@@ -3,13 +3,14 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Alert, Notice, Sheet, btnPrimary, btnSecondary } from '@/components/guest/ui';
 import { dashPost, errText, inputCls } from './api';
+import { HelpLinkCard, type HelpLink } from './HelpLinkCard';
 import { RoomServiceCard, type RoomService } from './RoomServiceCard';
 import { TableLinkCard, type TableLink } from './TableLinkCard';
 
 export interface TableRow { id: string; label: string; active: boolean; qr: string }
 const smallBtn = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900 hover:bg-stone-100 disabled:opacity-50';
 
-export function TablesManager({ tables, roomService, tableLink, canEditLinks }: { tables: TableRow[]; roomService: RoomService; tableLink: TableLink; canEditLinks: boolean }) {
+export function TablesManager({ tables, roomService, tableLink, helpLink, canEditLinks }: { tables: TableRow[]; roomService: RoomService; tableLink: TableLink; helpLink: HelpLink; canEditLinks: boolean }) {
   const router = useRouter();
   const [from, setFrom] = useState('1');
   const [to, setTo] = useState('10');
@@ -54,6 +55,7 @@ export function TablesManager({ tables, roomService, tableLink, canEditLinks }: 
       <p className="mt-3 text-sm text-stone-800">Three ways to take orders. Use any of them: <strong>a separate QR for each table</strong> (below), <strong>one shared table link</strong>, and <strong>one shared room link</strong> for room service. Tables never show rooms and rooms never show tables.</p>
       <TableLinkCard link={tableLink} canEdit={canEditLinks} />
       <RoomServiceCard rs={roomService} canEdit={canEditLinks} />
+      <HelpLinkCard link={helpLink} canEdit={canEditLinks} />
       <h2 className="mt-6 text-lg font-extrabold">A separate QR for each table</h2>
 
       {tables.length === 0 && <p className="mt-6 text-stone-800">No tables yet. Create your first tables above, then print their QR codes.</p>}

@@ -99,6 +99,7 @@ export function StaffApp({ me, supabase }: { me: StaffMe; supabase: { url: strin
       setCancelOrder(o);
     },
     resolve: (id) => void run(id, () => apiPost('/api/staff/request-done', { request_id: id })),
+    resolveHelp: (id) => void run(id, () => apiPost('/api/staff/help-done', { help_id: id })),
     close: (s) => {
       setDialogError(null);
       setCloseSession(s);

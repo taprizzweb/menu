@@ -15,6 +15,7 @@ import { POST as requestPOST } from '@/app/api/guest/request/route';
 import { POST as eventPOST } from '@/app/api/guest/event/route';
 import { POST as roomPOST } from '@/app/api/guest/room/route';
 import { POST as tablePOST } from '@/app/api/guest/table/route';
+import { POST as helpPOST } from '@/app/api/guest/help/route';
 import { GET as healthGET } from '@/app/api/health/route';
 
 let db: TestDb;
@@ -518,5 +519,45 @@ describe('POST /api/guest/order with sizes and options', () => {
     expect((await orderPOST(req('/api/guest/order', orderBody(t, { items: [line({ variant_id: small!.id, option_ids: Array.from({ length: 21 }, () => randomUUID()) })] }), { ip: uniqueIp() }))).status).toBe(400);
     // a plain dish is unchanged
     expect((await orderPOST(req('/api/guest/order', orderBody(await freshTable()), { ip: uniqueIp() }))).status).toBe(200);
+  });
+});
+
+describe('POST /api/guest/help', () => {
+  const link = 'a1'.repeat(32);
+  const send = (b: Record<string, unknown>, ip = uniqueIp(), o: Record<string, unknown> = {}) => helpPOST(req('/api/guest/help', { slug: w.A.slug, token: link, room: '201', topics: ['Towel'], ...b }, { ip, ...o }));
+  beforeAll(async () => {
+    await db.admin(`update public.restaurants set help_token = $2, room_numbers = '{}', help_topics = '{Towel,Wi-Fi down,Light not working}' where id = $1`, [w.A.rid, link]);
+  });
+
+  it('sends a problem to reception: room, topics and a note; the same message again is the same request', async () => {
+    const res = await send({ room: ' 201 ', topics: ['Towel', 'Wi-Fi down'], note: ' The router is red ' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(await json(res)).toEqual({ room: '201', replayed: false });
+    const [row] = await db.admin<any>(`select room, topics, note, status from public.help_requests where restaurant_id = $1 and room = '201' order by created_at desc limit 1`, [w.A.rid]);
+    expect(row).toEqual({ room: '201', topics: ['Towel', 'Wi-Fi down'], note: 'The router is red', status: 'open' });
+    expect(await json(await send({ room: '201', topics: ['Towel', 'Wi-Fi down'], note: 'The router is red' }))).toEqual({ room: '201', replayed: true });
+  });
+
+  it('a note alone is fine; nothing at all, unknown problems, bad rooms, long notes, extra fields are refused', async () => {
+    expect((await send({ room: '202', topics: [], note: 'The door is stuck' })).status).toBe(200);
+    expect((await send({ room: '203', topics: [] })).status).toBe(400);
+    expect((await send({ room: '203', topics: ['Nope'] })).status).toBe(400);
+    expect((await json(await send({ room: '203', topics: ['Nope'] }))).error.key).toBe('invalid_input');
+    expect((await send({ room: '' })).status).toBe(400);
+    expect((await send({ room: 'a;b' })).status).toBe(400);
+    expect((await send({ room: '203', note: 'n'.repeat(301) })).status).toBe(400);
+    expect((await send({ room: '203', topics: Array.from({ length: 13 }, (_, i) => `t${i}`) })).status).toBe(400);
+    expect((await send({ room: '203', extra: 1 })).status).toBe(400);
+  });
+
+  it('refuses a wrong link, another origin, and counts wrong-link guesses against the address', async () => {
+    expect((await send({ token: 'b2'.repeat(32) })).status).toBe(403);
+    expect((await json(await send({ token: 'b2'.repeat(32) }))).error.key).toBe('invalid_table_token');
+    expect((await send({}, uniqueIp(), { origin: 'https://evil.example' })).status).toBe(403);
+    const ip = uniqueIp();
+    let last = 0;
+    for (let i = 0; i < 25; i++) last = (await send({ token: `${(i + 16).toString(16).padStart(2, '0')}`.repeat(32) }, ip)).status;
+    expect(last).toBe(429);
   });
 });
