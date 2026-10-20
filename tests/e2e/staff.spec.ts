@@ -396,6 +396,8 @@ test.describe('tablet app (PWA)', () => {
 
 test.describe('accessibility (staff)', () => {
   const scan = async (page: Page, label: string) => {
+    // Sheets fade in over 220 ms; scanning mid-fade measures half-transparent text and reports false contrast failures.
+    await page.waitForTimeout(400);
     const r = await new AxeBuilder({ page: page as unknown as AxePage }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     const summary = r.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
     expect(summary, `${label}: ${summary.join('\n')}`).toEqual([]);
