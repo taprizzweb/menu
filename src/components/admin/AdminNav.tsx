@@ -13,7 +13,7 @@ export function AdminNav() {
   return (
     <header className="sticky top-0 z-20 border-b border-stone-200 bg-white">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
-        <p className="mr-auto text-base font-extrabold">GoToMenu <span className="font-semibold text-stone-700">Platform admin</span></p>
+        <p className="mr-auto text-base font-extrabold">Taprizz <span className="font-semibold text-stone-700">Platform admin</span></p>
         <nav aria-label="Admin" className="flex gap-1">{link('/admin', 'Restaurants')}{link('/admin/plans', 'Plans')}</nav>
         <button
           type="button"

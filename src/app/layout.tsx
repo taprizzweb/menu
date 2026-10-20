@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'GoToMenu', template: '%s · GoToMenu' },
+  title: { default: 'Taprizz', template: '%s · Taprizz' },
   description: 'Scan, order and pay at your table.',
   robots: { index: false, follow: false },
 };

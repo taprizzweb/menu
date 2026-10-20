@@ -59,7 +59,7 @@ export function MfaForm({ factorId, next }: { factorId: string | null; next: str
       <h1 className="text-3xl font-extrabold">Two-step sign-in</h1>
       {factorId ? (
         <>
-          <p className="mt-2 text-stone-700">Open your authenticator app and type the 6-digit code for GoToMenu.</p>
+          <p className="mt-2 text-stone-700">Open your authenticator app and type the 6-digit code for Taprizz.</p>
           {codeField}
         </>
       ) : !setup ? (

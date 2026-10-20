@@ -352,7 +352,7 @@ test.describe('tablet app (PWA)', () => {
     const href = await page.locator('link[rel="manifest"]').getAttribute('href');
     expect(href).toBe('/manifest.webmanifest');
     const m = await (await page.request.get(href!)).json();
-    expect(m).toMatchObject({ name: 'GoToMenu Staff', start_url: '/staff', display: 'standalone', scope: '/' });
+    expect(m).toMatchObject({ name: 'Taprizz Staff', start_url: '/staff', display: 'standalone', scope: '/' });
     for (const icon of m.icons as { src: string; sizes: string; type: string }[]) {
       const r = await page.request.get(icon.src);
       expect(r.status(), icon.src).toBe(200);

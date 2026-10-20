@@ -7,7 +7,7 @@ import { userClient } from '@/lib/supabase/server';
 export const metadata: Metadata = {
   title: 'Staff',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, title: 'GoToMenu', statusBarStyle: 'black-translucent' },
+  appleWebApp: { capable: true, title: 'Taprizz', statusBarStyle: 'black-translucent' },
 };
 
 export default async function StaffPage() {

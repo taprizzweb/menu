@@ -3,8 +3,8 @@ import type { MetadataRoute } from 'next';
 // Makes the staff screen installable on a tablet ("Add to home screen"), opening full screen.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'GoToMenu Staff',
-    short_name: 'GoToMenu',
+    name: 'Taprizz Staff',
+    short_name: 'Taprizz',
     description: 'Live orders, waiter calls and bills for restaurant staff.',
     start_url: '/staff',
     scope: '/',
