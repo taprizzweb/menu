@@ -168,7 +168,7 @@ test.describe('menu manager', () => {
 
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export CSV' }).click()]);
     const text = await (await import('node:fs/promises')).readFile((await download.path())!, 'utf8');
-    expect(text.split('\r\n')[0]).toBe('category,name,description,price,diet,spice,bestseller,chef_pick,available');
+    expect(text.split('\r\n')[0]).toBe('category,name,description,price,diet,spice,bestseller,chef_pick,available,sizes');
     expect(text).toContain(`${tag},Good ${tag},Nice,120,veg,1,no,no,yes`);
     expect(text).toContain("'=Evil(1)"); // a spreadsheet would otherwise run it as a formula
   });
