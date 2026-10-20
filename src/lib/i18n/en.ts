@@ -2,7 +2,6 @@ export const en = {
   // header / chrome
   'app.table': 'Table {label}',
   'app.privacy': 'Privacy',
-  'app.poweredBy': 'Powered by GoToMenu',
   // restaurant profile / hero
   'hero.explore': 'Explore the menu',
   'hero.info': 'Info & contact',

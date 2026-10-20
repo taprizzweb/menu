@@ -178,7 +178,6 @@ export function GuestApp({
         )}
         {!showStatus && <RestaurantInfo r={menu.restaurant} t={t} onTrack={track} />}
       </main>
-      <PoweredBy />
 
       {canOrder && !(showStatus && closed) && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)]">
@@ -225,7 +224,7 @@ export function GuestApp({
       }} />
 
       <footer className="mx-auto max-w-2xl px-4 pb-4 pt-8 text-center text-xs text-stone-600">
-        <Link href="/privacy" className="inline-flex min-h-11 min-w-11 items-center justify-center px-3 underline underline-offset-2">{t('app.privacy')}</Link> · {t('app.poweredBy')}
+        <Link href="/privacy" className="inline-flex min-h-11 min-w-11 items-center justify-center px-3 underline underline-offset-2">{t('app.privacy')}</Link> · <PoweredBy />
       </footer>
     </div>
   );

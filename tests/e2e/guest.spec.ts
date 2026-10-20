@@ -79,6 +79,47 @@ test.describe('room service', () => {
   });
 });
 
+test.describe('shared table link and footer', () => {
+  const LINK = 'f'.repeat(64);
+  const on = () => q(`update public.restaurants set table_token = $1, room_token = null where slug = 'spice-garden'`, [LINK]);
+  const off = () => q(`update public.restaurants set table_token = null where slug = 'spice-garden'`);
+
+  test('the shared table link asks which table, offers tables only, and the order lands on that table', async ({ page }) => {
+    const t = await newTable();
+    await q(`insert into public.dining_tables (restaurant_id, label, kind) select id, 'Room 9', 'room' from public.restaurants where slug = 'spice-garden' on conflict do nothing`);
+    await on();
+    try {
+      await page.goto(`/spice-garden?k=${LINK}`);
+      await expect(page.getByRole('heading', { name: 'Which table are you at?' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Order to your room' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Add Masala Chai', exact: true })).toHaveCount(0);
+      const options = await page.getByLabel('Table number').locator('option').allTextContents();
+      expect(options).toContain(t.label);
+      expect(options.some((o) => o.startsWith('Room'))).toBe(false);
+
+      await page.getByLabel('Table number').selectOption(t.label);
+      await page.getByRole('button', { name: 'Continue to the menu' }).click();
+      await expect(page).not.toHaveURL(new RegExp(LINK));
+      await expect(page).toHaveURL(new RegExp(`k=${t.token}$`));
+      await expect(page.getByText(`Table ${t.label}`, { exact: true })).toBeVisible();
+      await add(page, 'Masala Chai');
+      await placeOrderFromCart(page);
+      await expect(page.getByRole('heading', { name: 'Your orders' })).toBeVisible();
+      expect((await ordersOf(t.id)).length).toBe(1);
+      await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-tablelink-menu.png` });
+    } finally {
+      await off();
+    }
+  });
+
+  test('every menu ends with "Powered by Taprizz"', async ({ page }) => {
+    const t = await newTable();
+    await open(page, t);
+    await expect(page.getByText('Powered by')).toBeVisible();
+    await expect(page.getByText('Taprizz', { exact: true })).toBeVisible();
+  });
+});
+
 test.describe('guest journey', () => {
   test('scan → order → live status → call waiter → ask bill → paid → thank-you', async ({ page }, info) => {
     const t = await newTable();

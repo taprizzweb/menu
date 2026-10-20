@@ -175,6 +175,38 @@ test.describe('menu manager', () => {
 });
 
 test.describe('tables and QR codes', () => {
+  test('shared table link: turn on, see link and QR, print the card, new link, turn off', async ({ page }) => {
+    await q(`update public.restaurants set table_token = null where slug = 'spice-garden'`);
+    try {
+      await loginAs(page, 'owner', '/dash/tables');
+      const section = page.getByRole('region', { name: 'Shared table link' });
+      await expect(section).toContainText('Off');
+      await section.getByRole('button', { name: 'Turn on shared table link' }).click();
+      await expect(page.getByText('Shared table link is on.')).toBeVisible();
+      await expect(section.getByRole('img', { name: 'QR code for the shared table link' })).toBeVisible();
+      const tok = async () => (await q<{ table_token: string | null }>(`select table_token from public.restaurants where slug = 'spice-garden'`))[0]!.table_token;
+      const first = await tok();
+      expect(first).toMatch(/^[0-9a-f]{64}$/);
+      await expect(section.getByLabel('Table link')).toHaveValue(new RegExp(`/spice-garden\\?k=${first}$`));
+
+      page.once('dialog', (d) => void d.accept());
+      await section.getByRole('button', { name: 'New link' }).click();
+      await expect(page.getByText('New link created.').first()).toBeVisible();
+      expect(await tok()).not.toBe(first);
+
+      await page.goto('/dash/print?layout=tablelink');
+      await expect(page.getByRole('heading', { name: 'Shared table card' })).toBeVisible();
+      await expect(page.getByRole('img', { name: 'QR code to order at your table' })).toBeVisible();
+
+      await page.goto('/dash/tables');
+      await section.getByRole('button', { name: 'Turn off' }).click();
+      await expect(page.getByText('Shared table link is off.')).toBeVisible();
+      expect(await tok()).toBeNull();
+    } finally {
+      await q(`update public.restaurants set table_token = null where slug = 'spice-garden'`);
+    }
+  });
+
   test('room service: turn on with a room list, see the link and QR, print the card, turn off', async ({ page }) => {
     await q(`update public.restaurants set room_token = null, room_numbers = '{}' where slug = 'spice-garden'`);
     try {
