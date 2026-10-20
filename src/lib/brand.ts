@@ -1,5 +1,5 @@
 /** The platform's own credit shown at the bottom of every public menu. */
-export const POWERED_BY = { name: 'Taprizz', instagram: '' } as const;
+export const POWERED_BY = { name: 'Taprizz', instagram: 'taprizz.in' } as const;
 
 /** Only a plain Instagram handle (letters, digits, dot, underscore) becomes a link, so this can never point anywhere else. */
 export const instagramUrl = (handle: string): string | null => {

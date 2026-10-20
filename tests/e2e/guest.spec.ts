@@ -117,6 +117,10 @@ test.describe('shared table link and footer', () => {
     await open(page, t);
     await expect(page.getByText('Powered by')).toBeVisible();
     await expect(page.getByText('Taprizz', { exact: true })).toBeVisible();
+    const ig = page.getByRole('link', { name: '@taprizz.in' });
+    await expect(ig).toHaveAttribute('href', 'https://www.instagram.com/taprizz.in');
+    await expect(ig).toHaveAttribute('target', '_blank');
+    await expect(ig).toHaveAttribute('rel', /noopener/);
   });
 });
 

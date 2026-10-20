@@ -51,3 +51,13 @@ describe('crop maths', () => {
     expect(wide.sh).toBeCloseTo(2000);
   });
 });
+
+import { instagramUrl, POWERED_BY } from '@/lib/brand';
+describe('footer credit', () => {
+  it('links only to a plain Instagram handle', () => {
+    expect(POWERED_BY.name).toBe('Taprizz');
+    expect(instagramUrl('taprizz.in')).toBe('https://www.instagram.com/taprizz.in');
+    expect(instagramUrl('@taprizz.in')).toBe('https://www.instagram.com/taprizz.in');
+    for (const bad of ['', 'a b', 'a/b', 'https://evil.example', 'x'.repeat(31), 'a?b=1', 'javascript:alert(1)']) expect(instagramUrl(bad), bad).toBeNull();
+  });
+});
