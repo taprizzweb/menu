@@ -13,6 +13,8 @@ export interface MenuItem {
   is_available: boolean;
   is_bestseller: boolean;
   is_chef_pick: boolean;
+  /** set on the guest page for dishes in a "Bar -" category: no veg / non-veg mark, not part of the diet filters */
+  bar?: boolean;
   /** sizes (Small / Large, Half / Full...), each with its own price; empty when the dish has no sizes */
   variants?: MenuVariant[];
   /** extra choices (sauce, extras...) */

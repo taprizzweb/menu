@@ -5,7 +5,7 @@ import { lineLabel, unitPrice } from '@/lib/guest/options';
 import type { MenuItem } from '@/lib/guest/types';
 import type { Translator } from '@/lib/i18n';
 import type { Cart } from './hooks';
-import { Alert, IconMinus, IconPlus, Notice, Sheet, btnPrimary } from './ui';
+import { Alert, DietMark, IconMinus, IconPlus, Notice, Sheet, btnPrimary } from './ui';
 
 export function CartSheet({
   open, onClose, t, cart, items, placing, error, adjusted, onPlace,
@@ -33,7 +33,7 @@ export function CartSheet({
                 <li key={l.id} className="py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-semibold leading-snug">{name}</p>
+                      <p className="font-semibold leading-snug">{!item.bar && <DietMark diet={item.diet} className="mr-1.5 -translate-y-px" />}{name}</p>
                       {label && <p className="text-sm font-medium text-stone-800">{label}</p>}
                       <p className="text-sm text-stone-600">{formatPaise(unit)} × {l.qty} = <span className="font-semibold text-stone-900">{formatPaise(unit * l.qty)}</span></p>
                     </div>

@@ -6,6 +6,7 @@ import { formatPaise } from '@/lib/money';
 import { ApiFailure, askBill, callWaiter, currentPosition, placeOrder } from '@/lib/guest/client';
 import type { MenuData, MenuItem, PayMode, WaiterReason } from '@/lib/guest/types';
 import { errorMessageKey, t } from '@/lib/i18n';
+import { flagBarItems } from '@/lib/guest/filters';
 import { trackEvent, type TrackIds } from '@/lib/guest/analytics';
 import type { MenuEvent } from '@/lib/schemas/guest';
 import { CartSheet } from './CartSheet';
@@ -25,7 +26,7 @@ export function GuestApp({
   menu: MenuData; slug: string; token: string | null; hasCookie: boolean; imageBase: string;
 }) {
   const router = useRouter();
-  const categories = useMemo(() => menu.categories ?? [], [menu.categories]);
+  const categories = useMemo(() => flagBarItems(menu.categories ?? []), [menu.categories]);
   const items = useMemo(() => new Map<string, MenuItem>(categories.flatMap((c) => c.items).map((i) => [i.id, i])), [categories]);
   const cart = useCart(slug, items);
 

@@ -6,9 +6,8 @@ import type { MenuCategory, MenuItem } from '@/lib/guest/types';
 import type { Translator } from '@/lib/i18n';
 import type { TrackIds } from '@/lib/guest/analytics';
 import type { MenuEvent } from '@/lib/schemas/guest';
+import { FILTERS, matchesFilters, toggleFilter, type Filter } from '@/lib/guest/filters';
 import { DietMark, IconMinus, IconPlus, IconSearch, Sheet, SpiceDots } from './ui';
-
-type Filter = 'veg' | 'jain' | 'bestseller';
 
 interface Ordering {
   t: Translator; canOrder: boolean; imageBase: string;
@@ -81,7 +80,7 @@ const ItemCard = memo(function ItemCard({ item, o, onOpen }: { item: MenuItem; o
   const hasPhoto = !!item.image_path;
   const info = (
     <>
-      <h3 className={`font-serif text-[17px] font-semibold leading-snug ${soldOut ? 'text-stone-600' : 'text-stone-900'}`}>{item.name_en}</h3>
+      <h3 className={`font-serif text-[17px] font-semibold leading-snug ${soldOut ? 'text-stone-600' : 'text-stone-900'}`}>{!item.bar && <DietMark diet={item.diet} t={t} className="mr-1.5 -translate-y-px" />}{item.name_en}</h3>
       {item.description_en && <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-stone-600">{item.description_en}</p>}
     </>
   );
@@ -96,7 +95,7 @@ const ItemCard = memo(function ItemCard({ item, o, onOpen }: { item: MenuItem; o
     return (
       <li className={`col-span-full flex items-start gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm ${soldOut ? 'bg-stone-100' : ''}`}>
         <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-center gap-2"><DietMark diet={item.diet} t={t} /><Badges item={item} t={t} /></div>
+          <div className="mb-1 flex items-center gap-2"><Badges item={item} t={t} /></div>
           {info}
           <div className="mt-2"><SpiceDots level={item.spice} t={t} /></div>
         </div>
@@ -117,7 +116,6 @@ const ItemCard = memo(function ItemCard({ item, o, onOpen }: { item: MenuItem; o
             <Photo item={item} imageBase={o.imageBase} ratio="aspect-[4/3]" />
           </button>
         )}
-        <span className="pointer-events-none absolute left-2 top-2 rounded-md bg-white p-1 shadow-sm"><DietMark diet={item.diet} t={t} /></span>
         {item.is_bestseller && <span className="pointer-events-none absolute bottom-2 left-2"><Badges item={{ ...item, is_chef_pick: false }} t={t} /></span>}
         {soldOut && <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60 text-sm font-bold text-stone-900">{t('item.soldOut')}</span>}
       </div>
@@ -136,7 +134,7 @@ function FavouriteCard({ item, o, onOpen }: { item: MenuItem; o: Ordering; onOpe
     <>
       <Photo item={item} imageBase={o.imageBase} ratio="aspect-[5/4]" />
       <span className="block p-3">
-        <span className="block font-serif text-base font-semibold leading-snug text-stone-900">{item.name_en}</span>
+        <span className="block font-serif text-base font-semibold leading-snug text-stone-900">{!item.bar && <DietMark diet={item.diet} t={t} className="mr-1.5 -translate-y-px" />}{item.name_en}</span>
         <span className="mt-1 block text-base font-bold tabular-nums text-stone-900">{priceText(item, t)}</span>
       </span>
     </>
@@ -160,7 +158,7 @@ function DetailsSheet({ item, o, onClose }: { item: MenuItem | null; o: Ordering
         <div className="-mx-5 -mt-4">
           {it.image_path && <Photo item={it} imageBase={o.imageBase} ratio="aspect-[4/3]" />}
           <div className="space-y-3 px-5 pb-1 pt-4">
-            <div className="flex flex-wrap items-center gap-2"><DietMark diet={it.diet} t={t} /><Badges item={it} t={t} /><SpiceDots level={it.spice} t={t} /></div>
+            <div className="flex flex-wrap items-center gap-2">{!it.bar && <DietMark diet={it.diet} t={t} />}<Badges item={it} t={t} /><SpiceDots level={it.spice} t={t} /></div>
             {it.description_en && <p className="text-[15px] leading-relaxed text-stone-800">{it.description_en}</p>}
             <p className="font-serif text-2xl font-bold tabular-nums">{priceText(it, t)}</p>
             <AddControl item={it} o={o} large />
@@ -191,9 +189,7 @@ export function MenuView({ categories, t, canOrder, imageBase, qtyOf, onAdd, onS
       .map((c) => ({
         ...c,
         items: c.items.filter((i) => {
-          if (filters.has('veg') && i.diet !== 'veg' && i.diet !== 'jain') return false;
-          if (filters.has('jain') && i.diet !== 'jain') return false;
-          if (filters.has('bestseller') && !i.is_bestseller) return false;
+          if (!matchesFilters(i, filters)) return false;
           if (!q) return true;
           return [i.name_en, i.description_en].some((s) => s?.toLowerCase().includes(q));
         }),
@@ -228,13 +224,7 @@ export function MenuView({ categories, t, canOrder, imageBase, qtyOf, onAdd, onS
     barRef.current?.querySelector<HTMLElement>(`[data-cat='${active}']`)?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }, [active]);
 
-  const toggle = (f: Filter) =>
-    setFilters((cur) => {
-      const n = new Set(cur);
-      if (n.has(f)) n.delete(f);
-      else n.add(f);
-      return n;
-    });
+  const toggle = (f: Filter) => setFilters((cur) => toggleFilter(cur, f));
 
   // a search counts once the guest pauses typing, not on every keystroke
   useEffect(() => {
@@ -272,7 +262,7 @@ export function MenuView({ categories, t, canOrder, imageBase, qtyOf, onAdd, onS
             />
           </label>
           <div role="group" aria-label={t('menu.filters')} className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            {(['veg', 'jain', 'bestseller'] as const).map((f) => (
+            {FILTERS.map((f) => (
               <button key={f} type="button" aria-pressed={filters.has(f)} onClick={() => toggle(f)} className={filterBtn(filters.has(f))}>
                 {t(`menu.filter.${f}` as 'menu.filter.veg')}
               </button>

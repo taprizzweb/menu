@@ -36,16 +36,19 @@ export const IconCheck = ({ className }: IconProps) => (
 
 const DIET_COLOR: Record<Diet, string> = { veg: '#15803d', jain: '#15803d', nonveg: '#b91c1c', egg: '#a16207' };
 
-/** Indian packaged-food convention: coloured square outline with a dot (triangle for non-veg). */
-export function DietMark({ diet, t }: { diet: Diet; t: Translator }) {
+const DIET_LABEL: Record<Diet, string> = { veg: 'Vegetarian', nonveg: 'Non-vegetarian', egg: 'Contains egg', jain: 'Jain' };
+
+/** Indian packaged-food convention: a small coloured square with a dot of the same colour (green veg, red non-veg). */
+export function DietMark({ diet, t, className = '' }: { diet: Diet; t?: Translator; className?: string }) {
   const color = DIET_COLOR[diet];
+  const label = t ? t(`diet.${diet}` as 'diet.veg') : DIET_LABEL[diet];
   return (
-    <span className="inline-flex items-center gap-1">
-      <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label={t(`diet.${diet}` as 'diet.veg')}>
-        <rect x="1" y="1" width="14" height="14" rx="2" fill="#fff" stroke={color} strokeWidth="1.5" />
-        {diet === 'nonveg' ? <path d="M8 4.2 12 11.5H4z" fill={color} /> : <circle cx="8" cy="8" r="3.2" fill={color} />}
+    <span className={`inline-flex shrink-0 items-center gap-1 align-middle ${className}`}>
+      <svg width="14" height="14" viewBox="0 0 14 14" role="img" aria-label={label} focusable="false">
+        <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="2" fill="#fff" stroke={color} strokeWidth="1.5" />
+        <circle cx="7" cy="7" r="3.2" fill={color} />
       </svg>
-      {diet === 'jain' && <span className="text-xs font-semibold text-green-800">{t('diet.jain')}</span>}
+      {diet === 'jain' && <span aria-hidden className="text-xs font-semibold text-green-800">{label}</span>}
     </span>
   );
 }

@@ -457,6 +457,89 @@ test.describe('menu behaviour', () => {
   });
 });
 
+test.describe('menu diet chips and marks', () => {
+  const nav = (page: Page) => page.getByRole('navigation', { name: 'Menu categories' });
+  const chip = (page: Page, name: string) => page.getByRole('group', { name: 'Filters' }).getByRole('button', { name, exact: true });
+  const heading = (page: Page, name: string) => page.getByRole('heading', { name, level: 3 });
+  let catId = '';
+
+  test.beforeAll(async () => {
+    const [c] = await q<{ id: string }>(`insert into public.categories (restaurant_id, name_en, sort_order) select id, 'Bar - Wine - Red', 99 from public.restaurants where slug = 'spice-garden' returning id`);
+    catId = c!.id;
+    await q(`insert into public.items (restaurant_id, category_id, name_en, price_paise, diet, is_bestseller) select restaurant_id, id, 'Merlot Glass', 60000, 'veg', true from public.categories where id = $1`, [catId]);
+  });
+  test.afterAll(async () => {
+    await q(`delete from public.items where category_id = $1`, [catId]);
+    await q(`delete from public.categories where id = $1`, [catId]);
+  });
+
+  test('chips, marks and category chips behave; the chip row scrolls sideways at 375px', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const t = await newTable();
+    await open(page, t);
+
+    await expect(page.getByRole('group', { name: 'Filters' }).getByRole('button')).toHaveText(['Veg', 'Non-Veg', 'Jain', 'Bar', 'Bestsellers']);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    // marks: food has one before its name, drinks have none
+    await expect(card(page, 'Chicken Tikka').getByRole('img', { name: 'Non-vegetarian' })).toHaveCount(1);
+    await expect(card(page, 'Paneer Tikka').getByRole('img', { name: 'Vegetarian' })).toHaveCount(1);
+    await expect(card(page, 'Merlot Glass')).toBeVisible();
+    await expect(card(page, 'Merlot Glass').getByRole('img')).toHaveCount(0);
+
+    // Non-Veg alone
+    await chip(page, 'Non-Veg').click();
+    await expect(card(page, 'Chicken Tikka')).toBeVisible();
+    await expect(heading(page, 'Paneer Tikka')).toHaveCount(0);
+    await expect(heading(page, 'Merlot Glass')).toHaveCount(0);
+    await expect(nav(page).getByRole('button', { name: 'Bar - Wine - Red' })).toHaveCount(0);
+    // Veg switches Non-Veg off
+    await chip(page, 'Veg').click();
+    await expect(chip(page, 'Non-Veg')).toHaveAttribute('aria-pressed', 'false');
+    await expect(heading(page, 'Chicken Tikka')).toHaveCount(0);
+    await chip(page, 'Veg').click();
+
+    // Bar alone
+    await chip(page, 'Bar').click();
+    await expect(card(page, 'Merlot Glass')).toBeVisible();
+    await expect(heading(page, 'Paneer Tikka')).toHaveCount(0);
+    await expect(nav(page).getByRole('button')).toHaveCount(1);
+    await expect(nav(page).getByRole('button', { name: 'Bar - Wine - Red' })).toBeVisible();
+    // Bar + Veg still shows the bar
+    await chip(page, 'Veg').click();
+    await expect(card(page, 'Merlot Glass')).toBeVisible();
+    await chip(page, 'Veg').click();
+    await chip(page, 'Bar').click();
+
+    // Veg + Bestsellers
+    await chip(page, 'Veg').click();
+    await chip(page, 'Bestsellers').click();
+    await expect(card(page, 'Paneer Tikka')).toBeVisible();
+    await expect(heading(page, 'Hara Bhara Kebab')).toHaveCount(0);
+    await expect(heading(page, 'Chicken Tikka')).toHaveCount(0);
+    await expect(heading(page, 'Merlot Glass')).toHaveCount(0);
+
+    // search while a chip is active
+    await page.getByLabel('Search the menu').fill('tikka');
+    await expect(card(page, 'Paneer Tikka')).toBeVisible();
+    await expect(heading(page, 'Chicken Tikka')).toHaveCount(0);
+    await page.getByLabel('Search the menu').fill('chicken');
+    await expect(page.getByText('No dishes match')).toBeVisible();
+    await page.getByLabel('Search the menu').fill('');
+    await chip(page, 'Veg').click();
+    await chip(page, 'Bestsellers').click();
+
+    // the "scan your table" banner is untouched on a link without a table
+    await page.goto(`/${t.slug}`);
+    await expect(page.getByText('Scan your table QR to order')).toBeVisible();
+    await chip(page, 'Non-Veg').click();
+    await expect(page.getByText('Scan your table QR to order')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // the sideways chip row never widens the page
+    await expect(page.getByRole('group', { name: 'Filters' })).toHaveCSS('overflow-x', 'auto');
+  });
+});
+
 test.describe('friendly states', () => {
   test('invalid, rotated and missing QR codes cannot order', async ({ page }) => {
     const t = await newTable();
